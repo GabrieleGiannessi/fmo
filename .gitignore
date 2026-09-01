@@ -1,1 +1,32 @@
+# CMake build directory
+build/
+Build/
+cmake_build/
+
+# Generated files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.cmake
+
+# Executables and libraries
+fmo
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+
+# IDE e Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Compilazione
+*.out
+
 patients/
