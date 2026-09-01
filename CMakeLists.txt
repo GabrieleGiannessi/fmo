@@ -9,8 +9,11 @@ find_package(Eigen3 REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(MATIO REQUIRED IMPORTED_TARGET matio)
 
+# Aggiungi il percorso di include per le funzioni helper
+include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+
 # Aggiungi l'eseguibile
-add_executable(fmo preprocessing.cpp)
+add_executable(fmo tests/load-matrix.cpp)
 
 # Collega le librerie (i percorsi di include vengono ereditati automaticamente)
 target_link_libraries(fmo PRIVATE ${MATIO_LIBRARIES} Eigen3::Eigen)
