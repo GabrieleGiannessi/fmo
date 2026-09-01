@@ -1,69 +1,77 @@
 /**
- * @file preprocessing/main.cpp
+ * @file tests/load-matrix.cpp
  * @brief Test per il caricamento delle matrici di influenza D da file .mat
  * @details Questo file contiene un test per verificare il corretto caricamento
- * delle matrici di influenza D da file .mat. Viene testato sia il caricamento
- * di una singola matrice D che la concatenazione di più matrici D in una
- * matrice globale.
+ * delle matrici di influenza D da file .mat usando la classe FMODataManager.
+ * Dimostra l'uso di un manager che mantiene internamente uno stato FMOData
+ * e lo popola attraverso i metodi di caricamento.
  */
 
-#include "src/preprocessing/utils.hpp"
-#include <Eigen/Sparse>
+#include "src/preprocessing/manager.hpp"
 #include <iostream>
-#include <matio.h>
 #include <stdexcept>
-#include <string>
 #include <vector>
 
 int main() {
   try {
-    std::cout << "\n=== Test caricamento matrici di influenza ===" << std::endl;
+    std::cout << "\n=== Test FMODataManager ===" << std::endl;
 
-    // Test 1: Singola matrice D
-    std::cout << "\n1. Caricamento singola matrice D (Gantry 0°)..."
+    // Test 1: Caricamento singola matrice D
+    std::cout << "\n1. Creazione manager e caricamento singola matrice D..."
               << std::endl;
-    int out_rows, out_cols;
-    std::string d_path = "../data/phantom/Gantry0_Couch0_D.mat";
-    Eigen::SparseMatrix<double> D_single =
-        loadDMatrix(d_path, out_rows, out_cols);
+    FMODataManager manager1;
+    manager1.loadDMatrixFromFile("../data/phantom/Gantry0_Couch0_D.mat");
+    manager1.printSummary();
 
-    std::cout << "✓ Dimensioni: " << out_rows << " x " << out_cols << std::endl;
-    std::cout << "  Non-zero elements: " << D_single.nonZeros() << std::endl;
-
-    // Test 2: Matrice globale da singoli fasci
-    std::cout << "\n2. Caricamento matrice globale (configurazione standard 5 "
-                 "fasci -> 0, 72, 144, 216, 288)..."
+    // Test 2: Caricamento matrice globale da angoli
+    std::cout << "\n2. Caricamento matrice globale da 5 fasci (0°, 72°, 144°, "
+                 "216°, 288°)..."
               << std::endl;
+    FMODataManager manager2;
     std::vector<int> gantry_angles = {0, 72, 144, 216, 288};
-    std::string base_dir = "../data/phantom";
+    manager2.loadGlobalDMatrixFromAngles("../data/phantom", gantry_angles);
+    manager2.printSummary();
 
-    Eigen::SparseMatrix<double> D_global =
-        loadGlobalDMatrixFromAngles(base_dir, gantry_angles);
-
-    std::cout << "\n✓ Matrice globale caricata con successo!" << std::endl;
-    std::cout << "  Dimensioni finali: " << D_global.rows() << " x "
-              << D_global.cols() << std::endl;
-    std::cout << "  Non-zero elements: " << D_global.nonZeros() << std::endl;
-    std::cout << "  Densità: "
-              << (100.0 * D_global.nonZeros() /
-                  (D_global.rows() * D_global.cols()))
-              << "%" << std::endl;
-
-    // Test 3: Caricamento con liste esplicite di file
-    std::cout
-        << "\n3. Caricamento matrice globale da lista esplicita di file..."
-        << std::endl;
+    // Test 3: Caricamento da lista esplicita di file
+    std::cout << "\n3. Caricamento matrice globale da lista esplicita di 3 "
+                 "fasci..."
+              << std::endl;
+    FMODataManager manager3;
     std::vector<std::string> filepaths = {
         "../data/phantom/Gantry0_Couch0_D.mat",
         "../data/phantom/Gantry72_Couch0_D.mat",
         "../data/phantom/Gantry144_Couch0_D.mat"};
+    manager3.loadGlobalDMatrixFromFiles(filepaths);
+    manager3.printSummary();
 
-    Eigen::SparseMatrix<double> D_partial = loadGlobalDMatrix(filepaths);
-    std::cout << "\n✓ Matrice parziale (3 fasci) caricata!" << std::endl;
-    std::cout << "  Dimensioni: " << D_partial.rows() << " x "
-              << D_partial.cols() << std::endl;
-    std::cout << "  Non-zero elements: " << D_partial.nonZeros() << std::endl;
+    // Test 4: Accesso ai dati tramite getter
+    std::cout << "\n4. Test getter per accedere ai dati..." << std::endl;
+    std::cout << "Dimensioni matrice: " << manager2.getTotalVoxels() << " x "
+              << manager2.getTotalBeamlets() << std::endl;
+    const auto &D_global = manager2.getInfluenceMatrix();
+    std::cout << "Non-zero elements: " << D_global.nonZeros() << std::endl;
+    std::cout << "Densità: "
+              << (100.0 * D_global.nonZeros() /
+                  (D_global.rows() * D_global.cols()))
+              << "%" << std::endl;
 
+    // Test 5: Accesso alla struttura completa FMOData
+    std::cout << "\n5. Accesso alla struttura FMOData completa..." << std::endl;
+    const FMOData &fmo_complete = manager2.getData();
+    std::cout << "Total voxels (dal getData): " << fmo_complete.total_voxels
+              << std::endl;
+    std::cout << "Total beamlets (dal getData): "
+              << fmo_complete.total_beamlets << std::endl;
+
+    // Test 6: Caricamento VOILIST
+    std::cout << "\n6. Caricamento VOILIST (ROI indices)..." << std::endl;
+    manager2.loadVoiList("../data/phantom/BODY_VOILIST.mat", "v", "ptv");
+    manager2.loadVoiList("../data/phantom/Core_VOILIST.mat", "v", "rectum");
+    manager2.loadVoiList("../data/phantom/OuterTarget_VOILIST.mat", "v",
+                         "bladder");
+    manager2.printSummary();
+
+    std::cout << "\n✓ Test completati con successo!" << std::endl;
     return 0;
   } catch (const std::exception &e) {
     std::cerr << "Errore critico: " << e.what() << std::endl;

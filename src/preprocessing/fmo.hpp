@@ -12,7 +12,7 @@
 
 struct FMOData {
   int total_voxels = 0;             // M voxels
-  int total_beamlets = 0;           // N bixels
+  int total_beamlets = 0;           // N beamlets (o bixels)
   Eigen::SparseMatrix<double> D;    // Matrice di influenza [M x N]
   std::vector<int> ptv_indices;     // Indici PTV (Planning Target Volume)
   std::vector<int> rectum_indices;  // Indici retto
