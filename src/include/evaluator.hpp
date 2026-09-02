@@ -49,7 +49,7 @@ private:
     std::vector<double> doses = computeDoses(individual.genes);
     double total_dose_ptv = 0.0;
     for (int index : fmo_data.ptv_indices) {
-      total_dose_ptv += std::max(0.0, std::pow(PTV_DOSE - doses[index], 2));
+      total_dose_ptv += std::pow(std::max(0.0, PTV_DOSE - doses[index]), 2);
     }
     return total_dose_ptv / fmo_data.ptv_indices.size();
   }
