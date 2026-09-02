@@ -7,11 +7,11 @@
  * punteggio di fitness. Fornisce metodi per accedere e modificare i geni e il
  * punteggio di fitness.
  */
-
-#include <type_traits>
-#include <vector>
+#pragma once
 #include "fitness.hpp"
 #include <stdexcept>
+#include <type_traits>
+#include <vector>
 
 class Individual {
 public:
@@ -19,26 +19,56 @@ public:
    * @brief Costruttore della classe Individual
    * @param genes Vettore di intensità dei bixels
    * @param fitness Punteggio di fitness dell'individuo
+   * @param rank Rango di dominanza di Pareto (1 = ottimo)
+   * @param crowding_distance Distanza di affollamento (stima della densità
+   * attorno alla soluzione)
    */
   std::vector<double> genes;
-  int num_bixels;
   Fitness fitness;
+  int rank = 0;
+  double crowding_distance = 0.0;
 
-  Individual(Fitness fitness, int num_bixels)
-      : genes(std::vector<double>(num_bixels)), fitness(fitness),
-        num_bixels(num_bixels) {}
+  // Costruttore di default
+  Individual() = default;
 
-  Individual(const std::vector<double> &genes)
-      : genes(genes), fitness(Fitness()), num_bixels(genes.size()) {}
+  /**
+   * @brief Costruttore con dimensione prefissata
+   * @param num_bixels Numero totale di bixels del piano di trattamento
+   */
+  explicit Individual(int num_bixels)
+      : genes(num_bixels, 0.0), fitness(), rank(0), crowding_distance(0.0) {}
 
-private:
+  /**
+   * @brief Costruttore con geni preesistenti
+   * @param genes Vettore di intensità dei bixels
+   */
+  explicit Individual(const std::vector<double> &genes)
+      : genes(genes), fitness(), rank(0), crowding_distance(0.0) {}
+
+  /**
+   * @brief Costruttore completo
+   */
+  Individual(const std::vector<double> &genes, const Fitness &fitness)
+      : genes(genes), fitness(fitness), rank(0), crowding_distance(0.0) {}
+
+  // Utility per ottenere la dimensione del cromosoma
+  size_t size() const { return genes.size(); }
+
   // metodo di modifica di un gene specifico
   void setGene(int index, double value) {
-    if (index < 0 || index >= num_bixels) {
+    if (index >= genes.size() || index < 0) {
       throw std::out_of_range("Index out of range");
     }
     this->genes[index] = value;
   }
+
+  // Metodo di accesso al gene specifico
+    double getGene(size_t index) const {
+        if (index >= genes.size()) {
+            throw std::out_of_range("Index out of range in getGene");
+        }
+        return genes[index];
+    }
 
   // metodo di modifica del punteggio di fitness
   void setFitness(Fitness new_fitness) { this->fitness = new_fitness; }
