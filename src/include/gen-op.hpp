@@ -26,8 +26,8 @@ public:
    * confrontare)
    * @return Vettore di individui selezionati come genitori
    */
-  static std::vector<Individual<double>>
-  tournament_selection(const std::vector<Individual<double>> &population,
+  static std::vector<Individual>
+  tournament_selection(const std::vector<Individual> &population,
                        size_t tournament_size) {}
 
   /** @brief Implementazione del crossover SBX (Simulated Binary Crossover)
@@ -36,16 +36,16 @@ public:
    * @param crossover_probability Probabilità di crossover
    * @return Coppia di figli generati dai genitori
    */
-  static std::pair<Individual<double>, Individual<double>>
-  crossover(const Individual<double> &parent1,
-            const Individual<double> &parent2, double crossover_probability) {}
+  static std::pair<Individual, Individual>
+  crossover(const Individual &parent1,
+            const Individual &parent2, double crossover_probability) {}
 
   /**
    * @brief Implementazione della mutazione polinomiale dei geni di un individuo
    * @param individual Individuo da mutare
    * @param mutation_probability Probabilità di mutazione per ciascun gene
    */
-  static void mutate(Individual<double> &individual,
+  static void mutate(Individual &individual,
                      double mutation_probability) {}
 
     /**
@@ -55,7 +55,7 @@ public:
      * @param max_val Valore massimo consentito per i geni (default: 100.0).
      */
     static void clampBounds(
-        Individual<double>& ind, 
+        Individual& ind, 
         double min_val = 0.0, 
         double max_val = 100.0
     );
