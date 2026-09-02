@@ -10,34 +10,34 @@
 
 #include <type_traits>
 #include <vector>
+#include "fitness.hpp"
+#include <stdexcept>
 
-template <typename T> class Individual {
-  static_assert(std::is_floating_point<T>::value, "T must be float or double");
-
+class Individual {
 public:
   /**
    * @brief Costruttore della classe Individual
    * @param genes Vettore di intensità dei bixels
    * @param fitness Punteggio di fitness dell'individuo
    */
-  std::vector<T> genes;
+  std::vector<double> genes;
   int num_bixels;
   Fitness fitness;
 
-  Individual(double fitness, int num_bixels)
-      : genes(std::vector<T>(num_bixels)), fitness(fitness),
+  Individual(Fitness fitness, int num_bixels)
+      : genes(std::vector<double>(num_bixels)), fitness(fitness),
         num_bixels(num_bixels) {}
 
-  Individual(const std::vector<T> &genes)
-      : genes(genes), fitness(new Fitness()), num_bixels(genes.size()) {}
+  Individual(const std::vector<double> &genes)
+      : genes(genes), fitness(Fitness()), num_bixels(genes.size()) {}
 
 private:
   // metodo di modifica di un gene specifico
-  void setGene(int index, T value) {
+  void setGene(int index, double value) {
     if (index < 0 || index >= num_bixels) {
       throw std::out_of_range("Index out of range");
     }
-    genes[index] = value;
+    this->genes[index] = value;
   }
 
   // metodo di modifica del punteggio di fitness

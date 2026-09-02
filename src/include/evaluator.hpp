@@ -45,7 +45,7 @@ private:
   }
 
   //metodi di calcolo delle singole fitness function per PTV, retto e vescica
-  double computeFitnessPVT(const Individual<double> &individual) {
+  double computeFitnessPVT(const Individual &individual) {
     std::vector<double> doses = computeDoses(individual.genes);
     double total_dose_ptv = 0.0;
     for (int index : fmo_data.ptv_indices) {
@@ -54,7 +54,7 @@ private:
     return total_dose_ptv / fmo_data.ptv_indices.size();
   }
 
-  double computeFitnessRectum(const Individual<double> &individual,
+  double computeFitnessRectum(const Individual &individual,
                               const std::vector<int> &rectum_indices) {
     std::vector<double> doses = computeDoses(individual.genes);
     double total_dose_rectum = 0.0;
@@ -64,7 +64,7 @@ private:
     return total_dose_rectum / rectum_indices.size();
   }
 
-  double computeFitnessBladder(const Individual<double> &individual,
+  double computeFitnessBladder(const Individual &individual,
                                const std::vector<int> &bladder_indices) {
     std::vector<double> doses = computeDoses(individual.genes);
     double total_dose_bladder = 0.0;
@@ -75,7 +75,7 @@ private:
   }
 
   //metodo di calcolo delle fitness function, ritorna un Fitness object contenente i punteggi di fitness per PTV, retto e vescica
-  Fitness evaluate(const Individual<double> &individual) {
+  Fitness evaluate(const Individual &individual) {
     return Fitness(computeFitnessPVT(individual),
                    computeFitnessRectum(individual, fmo_data.rectum_indices),
                    computeFitnessBladder(individual, fmo_data.bladder_indices));

@@ -12,7 +12,7 @@
 
 template <typename T> class Population {
 public:
-  std::vector<Individual<T>> individuals;
+  std::vector<Individual> individuals;
   int size;
 
   Population(int size) : size(size) { individuals.reserve(size); }
@@ -20,7 +20,7 @@ public:
 private:
 
   // aggiunta di un individuo alla popolazione
-  void addIndividual(const Individual<T> &individual) {
+  void addIndividual(const Individual &individual) {
     if (individuals.size() >= size) {
       throw std::runtime_error("Population is full");
     }
@@ -28,7 +28,7 @@ private:
   }
 
   // aggiunta di n individui alla popolazione
-  void addIndividuals(const std::vector<Individual<T>> &new_individuals) {
+  void addIndividuals(const std::vector<Individual> &new_individuals) {
     if (individuals.size() + new_individuals.size() > size) {
       throw std::runtime_error(
           "Adding these individuals would exceed population size");
@@ -46,7 +46,7 @@ private:
   }
 
   // ottenere un individuo dalla popolazione
-  Individual<T> getIndividual(int index) const {
+  Individual getIndividual(int index) const {
     if (index < 0 || index >= individuals.size()) {
       throw std::out_of_range("Index out of range");
     }
@@ -55,16 +55,16 @@ private:
 
   // ottenere i migliori individui dalla popolazione in base al punteggio di
   // fitness
-  std::vector<Individual<T>> getBestIndividuals(int n) const {
+  std::vector<Individual> getBestIndividuals(int n) const {
     if (n <= 0 || n > individuals.size()) {
       throw std::out_of_range("Invalid number of individuals requested");
     }
-    std::vector<Individual<T>> sorted_individuals = individuals;
+    std::vector<Individual> sorted_individuals = individuals;
     std::sort(sorted_individuals.begin(), sorted_individuals.end(),
-              [](const Individual<T> &a, const Individual<T> &b) {
+              [](const Individual &a, const Individual &b) {
                 return a.fitness > b.fitness; // Ordinamento decrescente
               });
-    return std::vector<Individual<T>>(sorted_individuals.begin(),
+    return std::vector<Individual>(sorted_individuals.begin(),
                                       sorted_individuals.begin() + n);
   }
 };
