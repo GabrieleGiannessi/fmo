@@ -45,8 +45,7 @@ private:
   }
 
   //metodi di calcolo delle singole fitness function per PTV, retto e vescica
-  double computeFitnessPVT(const Individual &individual) {
-    std::vector<double> doses = computeDoses(individual.genes);
+  double computeFitnessPVT(const std::vector<double> &doses, const Individual &individual) {
     double total_dose_ptv = 0.0;
     for (int index : fmo_data.ptv_indices) {
       total_dose_ptv += std::pow(std::max(0.0, PTV_DOSE - doses[index]), 2);
@@ -54,30 +53,27 @@ private:
     return total_dose_ptv / fmo_data.ptv_indices.size();
   }
 
-  double computeFitnessRectum(const Individual &individual,
-                              const std::vector<int> &rectum_indices) {
-    std::vector<double> doses = computeDoses(individual.genes);
+  double computeFitnessRectum(const std::vector<double> &doses, const Individual &individual) {
     double total_dose_rectum = 0.0;
-    for (int index : rectum_indices) {
+    for (int index : fmo_data.rectum_indices) {
       total_dose_rectum += doses[index];
     }
-    return total_dose_rectum / rectum_indices.size();
+    return total_dose_rectum / fmo_data.rectum_indices.size();
   }
 
-  double computeFitnessBladder(const Individual &individual,
-                               const std::vector<int> &bladder_indices) {
-    std::vector<double> doses = computeDoses(individual.genes);
+  double computeFitnessBladder(const std::vector<double> &doses, const Individual &individual) {
     double total_dose_bladder = 0.0;
-    for (int index : bladder_indices) {
+    for (int index : fmo_data.bladder_indices) {
       total_dose_bladder += doses[index];
     }
-    return total_dose_bladder / bladder_indices.size();
+    return total_dose_bladder / fmo_data.bladder_indices.size();
   }
 
   //metodo di calcolo delle fitness function, ritorna un Fitness object contenente i punteggi di fitness per PTV, retto e vescica
   Fitness evaluate(const Individual &individual) {
-    return Fitness(computeFitnessPVT(individual),
-                   computeFitnessRectum(individual, fmo_data.rectum_indices),
-                   computeFitnessBladder(individual, fmo_data.bladder_indices));
+    std::vector<double> doses = computeDoses(individual.genes);
+    return Fitness(computeFitnessPVT(doses, individual),
+                   computeFitnessRectum(doses, individual),
+                   computeFitnessBladder(doses, individual));
   }
 };
