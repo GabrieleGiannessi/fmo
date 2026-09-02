@@ -10,7 +10,7 @@
  * calcolare le dosi agli organi a rischio e al target, e restituisce un
  * punteggio di fitness complessivo per l'individuo.
  */
-
+#pragma once
 #include "fitness.hpp"
 #include "individual.hpp"
 #include <fmo.hpp>

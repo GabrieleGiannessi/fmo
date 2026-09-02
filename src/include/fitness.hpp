@@ -12,7 +12,7 @@
  * per essere utilizzata in combinazione con la classe Individual, che
  * rappresenta un individuo nella popolazione genetica.
  */
-
+#pragma once
 class Fitness {
 public:
   double value_target_ptv;  // Punteggio di fitness relativo al target PTV

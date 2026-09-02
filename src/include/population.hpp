@@ -6,7 +6,7 @@
  * un vettore di individui.
  * Contiene metodi per l'aggiunta e l'accesso agli individui nella popolazione.
  */
-
+#pragma once
 #include "individual.hpp"
 #include <vector>
 #include <algorithm>

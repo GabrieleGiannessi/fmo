@@ -10,6 +10,7 @@
  * l'operatore di mutazione su ciascun figlio. La nuova popolazione di figli
  * viene restituita come output della funzione.
  */
+#pragma once
 #include "gen-op.hpp"
 #include "individual.hpp"
 #include "population.hpp"
