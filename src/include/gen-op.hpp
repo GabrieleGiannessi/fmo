@@ -16,6 +16,7 @@
 #include "individual.hpp"
 #include <algorithm>
 #include <random>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -68,16 +69,69 @@ public:
    * @param parent2 Secondo genitore
    * @param crossover_probability Probabilità di applicare il crossover (es.
    * 0.9)
-   * @param eta_c Indice di distribuzione del crossover
+   * @param eta_c Indice di distribuzione del crossover, controlla quanto i
+   * figli si "allontanano" dai genitori. Valori più alti producono figli più
+   * vicini ai genitori
    * @param rng Generatore pseudo-casuale
    * @return Coppia di nuovi individui figli
    */
   static std::pair<Individual, Individual>
   crossover(const Individual &parent1, const Individual &parent2,
-            double crossover_probability, double eta_c, std::mt19937 &rng);
+            double crossover_probability, double eta_c, std::mt19937 &rng) {
+    if (parent1.genes.size() != parent2.genes.size()) {
+      throw std::invalid_argument(
+          "I genitori devono avere lo stesso numero di geni");
+    }
+
+    Individual child1 = parent1;
+    Individual child2 = parent2;
+
+    std::uniform_real_distribution<double> dist(
+        0.0, 1.0); // distribuzione uniforme per la probabilità di crossover e
+                   // il calcolo di beta
+
+    if (dist(rng) <= crossover_probability) {
+      for (size_t i = 0; i < parent1.genes.size(); ++i) {
+        // Swap probabilistico per gene (50%)
+        if (dist(rng) <= 0.5) {
+          double u = dist(rng);
+          double beta; // fattore di diffusione per il crossover SBX
+          if (u <= 0.5) {
+            beta = std::pow(2.0 * u, 1.0 / (eta_c + 1.0));
+          } else {
+            beta = std::pow(1.0 / (2.0 * (1.0 - u)), 1.0 / (eta_c + 1.0));
+          }
+
+          double x1 = parent1.genes[i];
+          double x2 = parent2.genes[i];
+
+          child1.genes[i] = 0.5 * ((1.0 + beta) * x1 + (1.0 - beta) * x2);
+          child2.genes[i] = 0.5 * ((1.0 - beta) * x1 + (1.0 + beta) * x2);
+        }
+      }
+      // Applicazione del clipping sui figli generati
+      clip(child1);
+      clip(child2);
+    }
+
+    return std::make_pair(child1, child2);
+  }
 
   /**
    * @brief Mutazione Polinomiale dei geni dell'individuo.
+   * @details Per ogni gene, con probabilità mutation_probability, viene
+   * applicata la mutazione polinomiale secondo l'indice di distribuzione eta_m.
+   * La mutazione polinomiale genera un nuovo valore del gene vicino al valore
+   * originale, con una distribuzione controllata da eta_m. Valori più alti
+   * di eta_m producono mutazioni più vicine al gene originale, mentre valori
+   * più bassi producono mutazioni più lontane.
+   * La mutazione polinomiale è definita come segue:
+   * - Genera un numero casuale u uniformemente distribuito tra 0 e 1.
+   * - Calcola il fattore di mutazione delta in base a u e eta_m.
+   * - Aggiorna il gene con il nuovo valore calcolato.
+   * @note Dopo la mutazione, viene applicato il clipping per garantire che i
+   * valori dei geni rimangano entro i limiti fisici specificati (min_val e
+   * max_val).
    * @param individual Riferimento all'individuo da mutare in-place
    * @param mutation_probability Probabilità di mutazione per ciascun gene
    * (es. 1.0 / num_bixels)
@@ -88,7 +142,24 @@ public:
    */
   static void mutate(Individual &individual, double mutation_probability,
                      double eta_m, std::mt19937 &rng, double min_val = 0.0,
-                     double max_val = 100.0);
+                     double max_val = 100.0) {
+
+    std::uniform_real_distribution<double> dist(0.0, 1.0);
+    if (dist(rng) <= mutation_probability) {
+      double u = dist(rng);
+      double delta;
+      if (u < 0.5) {
+        delta = std::pow(2.0 * u, 1.0 / (eta_m + 1.0)) - 1.0;
+      } else {
+        delta = 1.0 - std::pow(2.0 * (1.0 - u), 1.0 / (eta_m + 1.0));
+      }
+      for (double &gene : individual.genes) {
+        gene += delta * (max_val - min_val);
+      }
+    }
+    // Applicazione del clipping dopo la mutazione
+    clip(individual, min_val, max_val);
+  }
 
   /**
    * @brief Correzione fisica dei vincoli di non-negatività (clipping).
