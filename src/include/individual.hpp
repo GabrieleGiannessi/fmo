@@ -22,14 +22,14 @@ public:
    */
   std::vector<T> genes;
   int num_bixels;
-  double fitness;
+  Fitness fitness;
 
   Individual(double fitness, int num_bixels)
       : genes(std::vector<T>(num_bixels)), fitness(fitness),
         num_bixels(num_bixels) {}
 
   Individual(const std::vector<T> &genes)
-      : genes(genes), fitness(0.0), num_bixels(genes.size()) {}
+      : genes(genes), fitness(new Fitness()), num_bixels(genes.size()) {}
 
 private:
   // metodo di modifica di un gene specifico
@@ -41,5 +41,5 @@ private:
   }
 
   // metodo di modifica del punteggio di fitness
-  void setFitness(double value) { this->fitness = value; }
+  void setFitness(Fitness new_fitness) { this->fitness = new_fitness; }
 };

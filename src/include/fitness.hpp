@@ -24,6 +24,8 @@ public:
       : value_target_ptv(value_target_ptv), value_oar_rectal(value_oar_rectal),
         value_oar_bladder(value_oar_bladder) {}
 
+  Fitness() : value_target_ptv(0.0), value_oar_rectal(0.0),
+              value_oar_bladder(0.0) {}
 private:
   // getters
   //  metodo per ottenere il punteggio di fitness relativo al target PTV
