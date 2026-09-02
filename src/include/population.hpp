@@ -9,15 +9,14 @@
 
 #include "individual.hpp"
 #include <vector>
+#include <algorithm>
 
-template <typename T> class Population {
+class Population {
 public:
   std::vector<Individual> individuals;
   int size;
 
   Population(int size) : size(size) { individuals.reserve(size); }
-
-private:
 
   // aggiunta di un individuo alla popolazione
   void addIndividual(const Individual &individual) {
@@ -55,16 +54,16 @@ private:
 
   // ottenere i migliori individui dalla popolazione in base al punteggio di
   // fitness
-  std::vector<Individual> getBestIndividuals(int n) const {
-    if (n <= 0 || n > individuals.size()) {
-      throw std::out_of_range("Invalid number of individuals requested");
-    }
-    std::vector<Individual> sorted_individuals = individuals;
-    std::sort(sorted_individuals.begin(), sorted_individuals.end(),
-              [](const Individual &a, const Individual &b) {
-                return a.fitness > b.fitness; // Ordinamento decrescente
-              });
-    return std::vector<Individual>(sorted_individuals.begin(),
-                                      sorted_individuals.begin() + n);
-  }
+  // std::vector<Individual> getBestIndividuals(int n) const {
+  //   if (n <= 0 || n > individuals.size()) {
+  //     throw std::out_of_range("Invalid number of individuals requested");
+  //   }
+  //   std::vector<Individual> sorted_individuals = individuals;
+  //   std::sort(sorted_individuals.begin(), sorted_individuals.end(),
+  //             [](const Individual &a, const Individual &b) {
+  //               return a.fitness > b.fitness; // Ordinamento decrescente
+  //             });
+  //   return std::vector<Individual>(sorted_individuals.begin(),
+  //                                     sorted_individuals.begin() + n);
+  // }
 };
