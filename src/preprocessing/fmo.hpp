@@ -7,7 +7,7 @@
  * beamlet, la matrice globale concatenata D e i vettori di indici per le
  * regioni di interesse (PTV, retto e vescica).
  */
-
+#pragma once
 #include <Eigen/Sparse>
 
 struct FMOData {

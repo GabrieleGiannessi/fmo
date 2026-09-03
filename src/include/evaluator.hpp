@@ -13,7 +13,7 @@
 #pragma once
 #include "fitness.hpp"
 #include "individual.hpp"
-#include <fmo.hpp>
+#include "src/preprocessing/fmo.hpp"
 #include <algorithm>
 
 #define PTV_DOSE 68 //dose prescritta al target PTV
@@ -28,7 +28,6 @@ public:
   FMOData fmo_data;
   Evaluator(const FMOData &fmo_data) : fmo_data(fmo_data) {}
 
-private:
   // metodo di calcolo delle dosi per ogni voxel utilizzando la matrice di
   // influenza D
   std::vector<double>

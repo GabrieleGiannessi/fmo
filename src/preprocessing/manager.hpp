@@ -31,6 +31,7 @@
  *   - Accesso ai dati FMO elaborati
  */
 class FMODataManager {
+
 private:
   // Stato interno
   FMOData fmo_data;
@@ -163,11 +164,13 @@ public:
       //           << std::endl;
     } else if (roi_type == "rectum") {
       fmo_data.rectum_indices = indices;
-      // std::cout << "✓ RECTUM_VOILIST caricato: " << indices.size() << " voxel"
+      // std::cout << "✓ RECTUM_VOILIST caricato: " << indices.size() << "
+      // voxel"
       //           << std::endl;
     } else if (roi_type == "bladder") {
       fmo_data.bladder_indices = indices;
-      // std::cout << "✓ BLADDER_VOILIST caricato: " << indices.size() << " voxel"
+      // std::cout << "✓ BLADDER_VOILIST caricato: " << indices.size() << "
+      // voxel"
       //           << std::endl;
     } else {
       throw std::runtime_error("Tipo di ROI non riconosciuto: " + roi_type);
@@ -264,10 +267,6 @@ public:
 
     loadGlobalDMatrixFromFiles(filepaths);
   }
-
-  // ========================================================================
-  // Getter per accedere ai dati
-  // ========================================================================
 
   /**
    * @brief Ritorna il numero totale di voxel
