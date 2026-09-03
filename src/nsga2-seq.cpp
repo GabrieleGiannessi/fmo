@@ -41,11 +41,14 @@ void nsga2seq(Population &pop, int num_generations, int population_size,
   std::cout << "Esecuzione dell'algoritmo NSGA-II per " << num_generations
             << " generazioni..." << std::endl;
 
+  std::cout << "Valutazione iniziale degli individui" << std::endl; 
+
   // 1. Valutazione iniziale di P_0
   for (size_t i = 0; i < pop.size(); ++i) {
     pop.getIndividual(i).setFitness(evaluator.evaluate(pop.getIndividual(i)));
   }
 
+  std::cout << "Classificazione degli individui" << std::endl; 
   // Classificazione iniziale di P_0
   auto fronts = fastNondominatedSort(pop);
   for (const auto &front : fronts) {
