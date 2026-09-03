@@ -6,47 +6,33 @@
  * un vettore di individui.
  * Contiene metodi per l'aggiunta e l'accesso agli individui nella popolazione.
  */
-
 #pragma once
 #include "individual.hpp"
-#include <algorithm>
 #include <stdexcept>
 #include <vector>
 
 class Population {
 public:
   std::vector<Individual> individuals;
-  size_t capacity;
 
-  explicit Population(size_t cap) : capacity(cap) { individuals.reserve(cap); }
+  Population() = default;
 
-  // Aggiunta di un individuo
+  // Riserva la memoria iniziale senza imporre un limite rigido
+  explicit Population(size_t reserve_count) {
+    individuals.reserve(reserve_count);
+  }
+
+  // Inserimento elementi
   inline void addIndividual(const Individual &individual) {
-    if (individuals.size() >= capacity) {
-      throw std::runtime_error("Population is full");
-    }
     individuals.push_back(individual);
   }
 
-  // Aggiunta di n individui
   inline void addIndividuals(const std::vector<Individual> &new_individuals) {
-    if (individuals.size() + new_individuals.size() > capacity) {
-      throw std::runtime_error(
-          "Adding these individuals would exceed population capacity");
-    }
     individuals.insert(individuals.end(), new_individuals.begin(),
                        new_individuals.end());
   }
 
-  // Rimozione di un individuo
-  inline void removeIndividual(size_t index) {
-    if (index >= individuals.size()) {
-      throw std::out_of_range("Index out of range");
-    }
-    individuals.erase(individuals.begin() + index);
-  }
-
-  // Accesso sicuro a un individuo
+  // Accesso sicuro (per riferimento per evitare copie)
   inline Individual &getIndividual(size_t index) {
     if (index >= individuals.size()) {
       throw std::out_of_range("Index out of range");
@@ -61,7 +47,15 @@ public:
     return individuals[index];
   }
 
+  inline void removeIndividual(size_t index) {
+    if (index >= individuals.size()) {
+      throw std::out_of_range("Index out of range");
+    }
+    individuals.erase(individuals.begin() + index);
+  }
+
   inline size_t size() const { return individuals.size(); }
   inline bool empty() const { return individuals.empty(); }
   inline void clear() { individuals.clear(); }
+  inline void reserve(size_t n) { individuals.reserve(n); }
 };
