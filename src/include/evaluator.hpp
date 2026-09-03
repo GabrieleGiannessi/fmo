@@ -15,6 +15,7 @@
 #include "individual.hpp"
 #include "src/preprocessing/fmo.hpp"
 #include <algorithm>
+#include <stdexcept>
 
 #define PTV_DOSE 68 //dose prescritta al target PTV
 
@@ -32,12 +33,20 @@ public:
   // influenza D
   std::vector<double>
   computeDoses(const std::vector<double> &beamlet_intensities) {
+    if (beamlet_intensities.size() !=
+        static_cast<size_t>(fmo_data.D.cols())) {
+      throw std::invalid_argument("Numero di intensita' beamlet non coerente "
+                                  "con le colonne della matrice D");
+    }
+
     std::vector<double> doses(fmo_data.total_voxels, 0.0);
-    for (int i = 0; i < fmo_data.total_voxels; ++i) {
-      for (Eigen::SparseMatrix<double>::InnerIterator it(fmo_data.D, i); it;
+    for (int beamlet_index = 0; beamlet_index < fmo_data.D.cols();
+         ++beamlet_index) {
+      for (Eigen::SparseMatrix<double>::InnerIterator it(fmo_data.D,
+                                                         beamlet_index);
+           it;
            ++it) {
-        int beamlet_index = it.col();
-        doses[i] += it.value() * beamlet_intensities[beamlet_index];
+        doses[it.row()] += it.value() * beamlet_intensities[beamlet_index];
       }
     }
     return doses;
