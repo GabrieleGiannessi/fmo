@@ -52,10 +52,10 @@ public:
       : genes(genes), fitness(fitness), rank(0), crowding_distance(0.0) {}
 
   // Utility per ottenere la dimensione del cromosoma
-  size_t size() const { return genes.size(); }
+  inline size_t size() const { return genes.size(); }
 
   // metodo di modifica di un gene specifico
-  void setGene(int index, double value) {
+  inline void setGene(int index, double value) {
     if (index >= genes.size() || index < 0) {
       throw std::out_of_range("Index out of range");
     }
@@ -63,13 +63,23 @@ public:
   }
 
   // Metodo di accesso al gene specifico
-    double getGene(size_t index) const {
-        if (index >= genes.size()) {
-            throw std::out_of_range("Index out of range in getGene");
-        }
-        return genes[index];
+  inline double getGene(size_t index) const {
+    if (index >= genes.size()) {
+      throw std::out_of_range("Index out of range in getGene");
     }
+    return genes[index];
+  }
+
+  // metodo di accesso alle fitness dell'individuo
+  inline Fitness getFitness() const { return fitness; }
 
   // metodo di modifica del punteggio di fitness
-  void setFitness(Fitness new_fitness) { this->fitness = new_fitness; }
+  inline void setFitness(Fitness new_fitness) { this->fitness = new_fitness; }
+  
+  inline int getRank() const { return rank; }
+  inline void setRank(int new_rank) { this->rank = new_rank; }
+  inline double getCrowdingDistance() const { return crowding_distance; }
+  inline void setCrowdingDistance(double new_distance) {
+    this->crowding_distance = new_distance;
+  }
 };
