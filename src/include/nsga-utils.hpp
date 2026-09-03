@@ -21,7 +21,7 @@ struct SortNode {
 /**
  * @brief Verifica se l'individuo 'a' domina 'b' in senso di Pareto.
  * @details Semantica:
- *  - PTV: Massimizzazione
+ *  - Planning Target Volume: Minimizzazione (convertito)
  *  - Retto (OAR): Minimizzazione
  *  - Vescica (OAR): Minimizzazione
  * @return true se 'a' domina 'b', false altrimenti.
@@ -29,8 +29,8 @@ struct SortNode {
 inline bool dominates(const Fitness &a, const Fitness &b) {
   // 1. Condizione di "non peggiore": se 'a' è peggiore di 'b' in anche solo
   // uno, NON può dominare b
-  if (a.value_target_ptv < b.value_target_ptv)
-    return false; // PTV peggiore (minore)
+  if (a.value_target_ptv > b.value_target_ptv)
+    return false; // PTV peggiore (maggiore)
   if (a.value_oar_rectal > b.value_oar_rectal)
     return false; // Retto peggiore (maggiore)
   if (a.value_oar_bladder > b.value_oar_bladder)
@@ -38,7 +38,7 @@ inline bool dominates(const Fitness &a, const Fitness &b) {
 
   // 2. Condizione di "strettamente migliore": 'a' deve superare 'b' in almeno
   // un obiettivo
-  bool at_least_one_better = (a.value_target_ptv > b.value_target_ptv) ||
+  bool at_least_one_better = (a.value_target_ptv < b.value_target_ptv) ||
                              (a.value_oar_rectal < b.value_oar_rectal) ||
                              (a.value_oar_bladder < b.value_oar_bladder);
 
@@ -215,4 +215,37 @@ inline void assignCrowdingDistance(const std::vector<int> &front,
       }
     }
   }
+}
+
+/**
+ * @brief Seleziona esattamente target_size individui da una popolazione classificata.
+ */
+inline Population truncatePopulation(Population &combined_pop, 
+                                     const std::vector<std::vector<int>> &fronts, 
+                                     size_t target_size) {
+  Population next_gen(target_size);
+
+  for (const auto &front : fronts) {
+    if (next_gen.size() + front.size() <= target_size) {
+      // Il fronte entra completamente
+      for (int idx : front) {
+        next_gen.addIndividual(combined_pop.getIndividual(idx));
+      }
+    } else {
+      // Il fronte eccede la capienza: ordina per crowding distance decrescente
+      std::vector<int> sorted_last_front = front;
+      std::sort(sorted_last_front.begin(), sorted_last_front.end(),
+                [&](int a, int b) {
+                  return combined_pop.getIndividual(a).getCrowdingDistance() >
+                         combined_pop.getIndividual(b).getCrowdingDistance();
+                });
+
+      size_t needed = target_size - next_gen.size();
+      for (size_t i = 0; i < needed; ++i) {
+        next_gen.addIndividual(combined_pop.getIndividual(sorted_last_front[i]));
+      }
+      break;
+    }
+  }
+  return next_gen;
 }
