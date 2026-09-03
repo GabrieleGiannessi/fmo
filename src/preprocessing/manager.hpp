@@ -1,29 +1,32 @@
 /**
  * @file utils.hpp
- * @brief Classe FMODataManager per il caricamento e la manipolazione dei dati FMO
- * @details La classe gestisce internamente un'istanza di FMOData e fornisce metodi
- * per caricare e manipolare le matrici sparse D (matrici di influenza) e i vettori
- * di indici VOILIST (Volume of Interest List) da file .mat. Gli indici VOILIST 
- * sono utilizzati per identificare le regioni di interesse (ROI) come PTV, retto e vescica.
+ * @brief Classe FMODataManager per il caricamento e la manipolazione dei dati
+ * FMO
+ * @details La classe gestisce internamente un'istanza di FMOData e fornisce
+ * metodi per caricare e manipolare le matrici sparse D (matrici di influenza) e
+ * i vettori di indici VOILIST (Volume of Interest List) da file .mat. Gli
+ * indici VOILIST sono utilizzati per identificare le regioni di interesse (ROI)
+ * come PTV, retto e vescica.
  *
  */
 
 #ifndef FMO_UTILS_HPP
 #define FMO_UTILS_HPP
 
+#include "fmo.hpp"
 #include <Eigen/Sparse>
 #include <iostream>
 #include <matio.h>
 #include <string>
 #include <vector>
-#include "fmo.hpp"
 
 /**
  * @class FMODataManager
  * @brief Manager per il caricamento e la manipolazione dei dati FMO
  * @details Mantiene internamente un'istanza di FMOData e fornisce metodi per:
  *   - Caricamento di matrici D singole e multiple da file .mat
- *   - Concatenazione orizzontale di matrici D da multiple configurazioni di fasci
+ *   - Concatenazione orizzontale di matrici D da multiple configurazioni di
+ * fasci
  *   - Caricamento di vettori di indici VOILIST (regioni di interesse)
  *   - Accesso ai dati FMO elaborati
  */
@@ -68,9 +71,8 @@ private:
    * @brief Helper privato per caricare una singola matrice D senza aggiornare
    * lo stato interno
    */
-  static Eigen::SparseMatrix<double> loadDMatrixHelper(const std::string &filepath,
-                                                       int &out_rows,
-                                                       int &out_cols) {
+  static Eigen::SparseMatrix<double>
+  loadDMatrixHelper(const std::string &filepath, int &out_rows, int &out_cols) {
     mat_t *matfp = Mat_Open(filepath.c_str(), MAT_ACC_RDONLY);
     if (!matfp) {
       throw std::runtime_error("Errore nell'apertura del file: " + filepath);
@@ -111,8 +113,8 @@ public:
     fmo_data.total_voxels = rows;
     fmo_data.total_beamlets = cols;
 
-    std::cout << "✓ Matrice D caricata: " << rows << " x " << cols
-              << " (nnz: " << D.nonZeros() << ")" << std::endl;
+    // std::cout << "✓ Matrice D caricata: " << rows << " x " << cols
+    //           << " (nnz: " << D.nonZeros() << ")" << std::endl;
   }
 
   /**
@@ -157,16 +159,16 @@ public:
     // Assegna al tipo di ROI appropriato
     if (roi_type == "ptv") {
       fmo_data.ptv_indices = indices;
-      std::cout << "✓ PTV_VOILIST caricato: " << indices.size() << " voxel"
-                << std::endl;
+      // std::cout << "✓ PTV_VOILIST caricato: " << indices.size() << " voxel"
+      //           << std::endl;
     } else if (roi_type == "rectum") {
       fmo_data.rectum_indices = indices;
-      std::cout << "✓ RECTUM_VOILIST caricato: " << indices.size() << " voxel"
-                << std::endl;
+      // std::cout << "✓ RECTUM_VOILIST caricato: " << indices.size() << " voxel"
+      //           << std::endl;
     } else if (roi_type == "bladder") {
       fmo_data.bladder_indices = indices;
-      std::cout << "✓ BLADDER_VOILIST caricato: " << indices.size() << " voxel"
-                << std::endl;
+      // std::cout << "✓ BLADDER_VOILIST caricato: " << indices.size() << " voxel"
+      //           << std::endl;
     } else {
       throw std::runtime_error("Tipo di ROI non riconosciuto: " + roi_type);
     }
@@ -180,7 +182,8 @@ public:
    * @throw std::runtime_error Se la lista è vuota o le matrici hanno righe
    * incoerenti
    */
-  void loadGlobalDMatrixFromFiles(const std::vector<std::string> &beam_filepaths) {
+  void
+  loadGlobalDMatrixFromFiles(const std::vector<std::string> &beam_filepaths) {
     if (beam_filepaths.empty()) {
       throw std::runtime_error("Lista di fasci vuota");
     }
@@ -189,8 +192,8 @@ public:
     int M = -1;
     int total_N = 0;
 
-    std::cout << "Caricamento matrici D per " << beam_filepaths.size()
-              << " fascio/i..." << std::endl;
+    // std::cout << "Caricamento matrici D per " << beam_filepaths.size()
+    // << " fascio/i..." << std::endl;
 
     // Carica tutte le matrici D
     for (size_t k = 0; k < beam_filepaths.size(); ++k) {
@@ -208,8 +211,8 @@ public:
 
       D_matrices.push_back(D);
       total_N += cols;
-      std::cout << "  Fascio " << (k + 1) << ": " << rows << " x " << cols
-                << " (nnz: " << D.nonZeros() << ")" << std::endl;
+      // std::cout << "  Fascio " << (k + 1) << ": " << rows << " x " << cols
+      // << " (nnz: " << D.nonZeros() << ")" << std::endl;
     }
 
     // Concatena le matrici orizzontalmente
@@ -235,8 +238,8 @@ public:
     fmo_data.total_voxels = M;
     fmo_data.total_beamlets = total_N;
 
-    std::cout << "Matrice globale concatenata: " << M << " x " << total_N
-              << " (nnz: " << D_global.nonZeros() << ")" << std::endl;
+    // std::cout << "Matrice globale concatenata: " << M << " x " << total_N
+    // << " (nnz: " << D_global.nonZeros() << ")" << std::endl;
   }
 
   /**
@@ -250,7 +253,7 @@ public:
    * @throw std::runtime_error Se uno dei file non può essere caricato
    */
   void loadGlobalDMatrixFromAngles(const std::string &base_dir,
-                                    const std::vector<int> &gantry_angles) {
+                                   const std::vector<int> &gantry_angles) {
     std::vector<std::string> filepaths;
 
     for (int angle : gantry_angles) {
@@ -286,9 +289,7 @@ public:
   /**
    * @brief Ritorna gli indici PTV
    */
-  const std::vector<int> &getPTVIndices() const {
-    return fmo_data.ptv_indices;
-  }
+  const std::vector<int> &getPTVIndices() const { return fmo_data.ptv_indices; }
 
   /**
    * @brief Ritorna gli indici retto
