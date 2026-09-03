@@ -10,18 +10,27 @@
  *
  */
 
-#ifndef FMO_UTILS_HPP
-#define FMO_UTILS_HPP
+#pragma once
 
 #include "fmo.hpp"
 #include <Eigen/Sparse>
 #include <iostream>
 #include <matio.h>
 #include <string>
+#include <string_view>
 #include <vector>
 
+namespace ROIFiles {
+constexpr std::string_view default_directory = "../data/prostate";
+constexpr std::string_view ptv_file =
+    "PTV_68_VOILIST.mat"; // prendiamo di riferimento solo la regione tumorale
+                          // senza considerare le sue aree di contorno
+constexpr std::string_view rectum_file = "Rectum_VOILIST.mat";
+constexpr std::string_view bladder_file = "Bladder_VOILIST.mat";
+}; // namespace ROIFiles
+
 /**
- * @class FMODataManager
+ * @class FMODataManagers
  * @brief Manager per il caricamento e la manipolazione dei dati FMO
  * @details Mantiene internamente un'istanza di FMOData e fornisce metodi per:
  *   - Caricamento di matrici D singole e multiple da file .mat
@@ -175,6 +184,33 @@ public:
     } else {
       throw std::runtime_error("Tipo di ROI non riconosciuto: " + roi_type);
     }
+  }
+
+  /**
+   * @brief Carica le ROI standard dalla directory predefinita.
+   * @param directory Directory contenente i file VOILIST.
+   */
+  void loadDefaultROIs(
+      const std::string &directory = std::string(ROIFiles::default_directory)) {
+    loadVoiList(directory + "/" + std::string(ROIFiles::ptv_file), "v", "ptv");
+    loadVoiList(directory + "/" + std::string(ROIFiles::rectum_file), "v",
+                "rectum");
+    loadVoiList(directory + "/" + std::string(ROIFiles::bladder_file), "v",
+                "bladder");
+  }
+
+  /**
+   * @brief Carica matrice di influenza e ROI necessarie al problema FMO.
+   * @param data_directory Directory contenente le matrici D.
+   * @param gantry_angles Angoli dei gantry da concatenare.
+   * @param roi_directory Directory contenente i file VOILIST.
+   */
+  void loadAllData(const std::string &data_directory,
+                   const std::vector<int> &gantry_angles,
+                   const std::string &roi_directory =
+                       std::string(ROIFiles::default_directory)) {
+    loadGlobalDMatrixFromAngles(data_directory, gantry_angles);
+    loadDefaultROIs(roi_directory);
   }
 
   /**
@@ -332,5 +368,3 @@ public:
               << std::endl;
   }
 };
-
-#endif // FMO_UTILS_HPP
