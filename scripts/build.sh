@@ -2,20 +2,20 @@
 set -e
 
 # Pulisci la build precedente
-echo "Pulizia della build precedente..."
+echo "Cleaning the previous build dir..."
 rm -rf build/
 
 # Crea e entra in build
-echo "Creazione della directory build..."
+echo "Creation of directory build..."
 mkdir build
 cd build
 
 # Configura e compila
-echo "Esecuzione di cmake..."
+echo "cmake execution..."
 cmake ..
 
-echo "Compilazione in corso..."
+echo "Compilation in progress..."
 make
 
 echo ""
-echo "Build completed successfully, execute in: build/fmo !"
+echo "Build completed successfully, the files are in the "build/" directory!"
