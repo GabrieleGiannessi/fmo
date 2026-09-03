@@ -25,12 +25,12 @@
 #define GANTRIES                                                               \
   {0, 72, 144, 216, 288}                                                       \
   // Angoli di gantry da caricare per la matrice globale D
-#define PATH "../data/phantom" // Percorso base per i file di input
+#define PATH "../data/prostate" // Percorso base per i file di input
 
 FMODataManager getDataFromPathAndAngles(const std::string &base_dir,
                                         const std::vector<int> &gantry_angles) {
   FMODataManager manager;
-  manager.loadGlobalDMatrixFromAngles(base_dir, gantry_angles);
+  manager.loadAllData(base_dir, gantry_angles);
   return manager;
 }
 
@@ -54,6 +54,8 @@ void nsga2seq(Population &pop, int num_generations, int population_size,
 
   // 2. Loop Generazionale
   for (int gen = 0; gen < num_generations; ++gen) {
+
+    std::cout << "Generazione " << gen << std::endl; 
     // A. Generazione discendenza Q_t (taglia N) tramite Torneo, SBX e Mutazione
     Population offspring = generateOffSpring(pop, crossover_probability,
                                              mutation_probability, eta_c, eta_m, rng);
