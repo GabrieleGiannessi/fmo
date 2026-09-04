@@ -18,7 +18,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 add_executable(fmo tests/load-matrix.cpp)
 add_executable(test-core tests/test-core.cpp)
 add_executable(test-nsga2 tests/test-nsga2.cpp)
-add_executable(nsga2-seq src/nsga2-seq.cpp)
+add_executable(nsga2-seq src/nsga2-seq.cpp src/nsga2-steps.cpp)
 
 # Collega le librerie (i percorsi di include vengono ereditati automaticamente)
 target_link_libraries(fmo PRIVATE ${MATIO_LIBRARIES} Eigen3::Eigen)
