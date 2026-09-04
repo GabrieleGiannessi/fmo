@@ -34,8 +34,8 @@ public:
    * @return true se a è migliore di b, false altrimenti
    */
   static inline bool crowded_compare(const Individual &a, const Individual &b) {
-    if (a.rank != b.rank) {
-      return a.rank < b.rank;
+  if (a.rank != b.rank) {
+    return a.rank < b.rank;
     }
     return a.crowding_distance > b.crowding_distance;
   }

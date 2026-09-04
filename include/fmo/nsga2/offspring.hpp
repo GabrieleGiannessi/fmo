@@ -11,15 +11,17 @@
  * viene restituita come output della funzione.
  */
 #pragma once
-#include "fmo/nsga2/gen-op.hpp"
 #include "fmo/core/individual.hpp"
 #include "fmo/core/population.hpp"
+#include "fmo/nsga2/gen-op.hpp"
 #include <vector>
 
 inline Population generateRandomPopulation(int population_size, int num_bixels,
                                            std::mt19937 &rng) {
   Population population(population_size);
-  std::uniform_real_distribution<double> dist(0.0, 10.0);
+  std::uniform_real_distribution<double> dist(
+      0.0, 10.0); // la popolazione iniziale contiene individui con geni i cui
+                  // valori reali appartengono a [0, 10]
 
   for (int i = 0; i < population_size; ++i) {
     Individual individual(num_bixels);
@@ -58,3 +60,32 @@ inline Population generateOffSpring(Population &population,
   }
   return offspring;
 }
+
+// inline Population generateOffSpringOmp(Population &population,
+//                                     double crossover_probability,
+//                                     double mutation_probability, double eta_c,
+//                                     double eta_m, std::mt19937 &rng) {
+//   Population offspring(population.size());
+//   for (int i = 0; i < population.size() / 2; ++i) {
+//     // Selezione dei genitori tramite torneo binario
+//     const Individual &parent1 =
+//         GeneticOperator::tournament_selection(population.individuals, rng);
+//     const Individual &parent2 =
+//         GeneticOperator::tournament_selection(population.individuals, rng);
+
+//     // Crossover per generare due figli
+//     auto [child1, child2] = GeneticOperator::crossover(
+//         parent1, parent2, crossover_probability, eta_c, rng);
+
+//     // Mutazione dei figli
+//     GeneticOperator::mutate(child1, mutation_probability, eta_m, rng);
+//     GeneticOperator::mutate(child2, mutation_probability, eta_m, rng);
+
+//     // Aggiunta dei figli alla nuova popolazione
+//     offspring.addIndividual(child1);
+//     offspring.addIndividual(child2);
+//   }
+//   return offspring;
+// }
+
+
