@@ -56,7 +56,7 @@ void nsga2Omp(Population &pop, int num_generations, int population_size,
     std::cout << "Generazione " << gen << std::endl;
     // A. Generazione discendenza Q_t (taglia N) tramite Torneo, SBX e Mutazione
     Population offspring = generatePopulationOffspring(
-        pop, crossover_probability, mutation_probability, eta_c, eta_m, rng);
+        pop, eta_c, eta_m, rng);
 
     // B. Valutazione della discendenza Q_t (calcolo delle fitness)
     evaluatePopulationOmp(offspring, evaluator, nw);
