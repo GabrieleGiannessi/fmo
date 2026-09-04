@@ -9,6 +9,7 @@
  */
 #pragma once
 #include <Eigen/Sparse>
+#include <vector>
 
 struct FMOData {
   int total_voxels = 0;             // M voxels

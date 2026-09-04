@@ -8,7 +8,7 @@
  * punteggio di fitness.
  */
 #pragma once
-#include "fitness.hpp"
+#include "fmo/core/fitness.hpp"
 #include <stdexcept>
 #include <type_traits>
 #include <vector>

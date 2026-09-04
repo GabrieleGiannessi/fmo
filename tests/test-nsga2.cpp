@@ -1,6 +1,6 @@
-#include "../src/include/gen-op.hpp"
-#include "../src/include/nsga-utils.hpp"
-#include "../src/include/offspring.hpp"
+#include "fmo/nsga2/gen-op.hpp"
+#include "fmo/nsga2/nsga-utils.hpp"
+#include "fmo/nsga2/offspring.hpp"
 #include <cmath>
 #include <functional>
 #include <iostream>

@@ -12,7 +12,7 @@
 
 #pragma once
 
-#include "fmo.hpp"
+#include "fmo/preprocessing/fmo.hpp"
 #include <Eigen/Sparse>
 #include <iostream>
 #include <matio.h>

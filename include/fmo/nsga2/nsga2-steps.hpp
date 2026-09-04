@@ -4,8 +4,8 @@
  */
 #pragma once
 
-#include "evaluator.hpp"
-#include "population.hpp"
+#include "fmo/evaluation/evaluator.hpp"
+#include "fmo/core/population.hpp"
 
 #include <random>
 #include <vector>

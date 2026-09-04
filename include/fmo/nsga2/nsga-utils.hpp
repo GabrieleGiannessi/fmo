@@ -11,9 +11,10 @@
  */
 #pragma once
 
-#include "fitness.hpp"
-#include "population.hpp"
+#include "fmo/core/fitness.hpp"
+#include "fmo/core/population.hpp"
 
+#include <algorithm>
 #include <vector>
 #include <limits>
 

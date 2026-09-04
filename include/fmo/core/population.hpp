@@ -7,7 +7,7 @@
  * Contiene metodi per l'aggiunta e l'accesso agli individui nella popolazione.
  */
 #pragma once
-#include "individual.hpp"
+#include "fmo/core/individual.hpp"
 #include <stdexcept>
 #include <vector>
 

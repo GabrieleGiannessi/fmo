@@ -11,9 +11,9 @@
  * viene restituita come output della funzione.
  */
 #pragma once
-#include "gen-op.hpp"
-#include "individual.hpp"
-#include "population.hpp"
+#include "fmo/nsga2/gen-op.hpp"
+#include "fmo/core/individual.hpp"
+#include "fmo/core/population.hpp"
 #include <vector>
 
 inline Population generateRandomPopulation(int population_size, int num_bixels,

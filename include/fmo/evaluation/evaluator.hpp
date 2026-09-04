@@ -11,9 +11,9 @@
  * punteggio di fitness complessivo per l'individuo.
  */
 #pragma once
-#include "fitness.hpp"
-#include "individual.hpp"
-#include "src/preprocessing/fmo.hpp"
+#include "fmo/core/fitness.hpp"
+#include "fmo/core/individual.hpp"
+#include "fmo/preprocessing/fmo.hpp"
 #include <algorithm>
 #include <stdexcept>
 

@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include "individual.hpp"
+#include "fmo/core/individual.hpp"
 #include <algorithm>
 #include <random>
 #include <stdexcept>

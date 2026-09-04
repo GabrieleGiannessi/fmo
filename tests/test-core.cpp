@@ -1,9 +1,9 @@
 #include <cassert>
 #include <iostream>
 #include <random>
-#include "../src/include/gen-op.hpp"
-#include "../src/include/population.hpp"
-#include "../src/include/offspring.hpp"
+#include "fmo/nsga2/gen-op.hpp"
+#include "fmo/core/population.hpp"
+#include "fmo/nsga2/offspring.hpp"
 
 void test_clipping() {
     Individual ind({-10.0, 5.0, 150.0});

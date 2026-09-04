@@ -11,7 +11,7 @@ Makefile
 *.cmake
 
 # Executables and libraries
-fmo
+/fmo
 *.o
 *.a
 *.so
