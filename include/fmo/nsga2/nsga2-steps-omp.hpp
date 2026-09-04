@@ -14,18 +14,20 @@
 #include <vector>
 
 // calcolo delle fitness in parallelo (embarassingly parallel)
-void evaluatePopulationOmp(Population &population, Evaluator &evaluator);
+void evaluatePopulationOmp(Population &population, Evaluator &evaluator,
+                           int nw);
 
 // generazione della prole parallela
 Population generatePopulationOffspringOmp(Population &population,
                                           double crossover_probability,
                                           double mutation_probability,
                                           double eta_c, double eta_m,
-                                          std::mt19937 &rng);
+                                          std::mt19937 &rng, int nw);
 
 // assegnazione crowding distance parallelo
 void assignPopulationCrowdingOmp(Population &population,
-                                 const std::vector<std::vector<int>> &fronts);
+                                 const std::vector<std::vector<int>> &fronts,
+                                 int nw);
 
 // non-dominated sorting in parallelo
-std::vector<std::vector<int>> sortPopulationOmp(Population &population);
+std::vector<std::vector<int>> sortPopulationOmp(Population &population, int nw);
