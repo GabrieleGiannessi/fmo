@@ -1,8 +1,13 @@
 /**
  * @file nsga-utils.hpp
  * @brief Funzioni di utilità per l'algoritmo NSGA-II
- * @details Contiene strutture e predicati di dominanza per il fast
- * non-dominated sorting.
+ * @details Contiene strutture e funzioni per l'implementazione dell'algoritmo
+ * genetico NSGA-II (Deb et al. 2002). In particolare, contiene strutture e
+ * funzioni per l'implementazione di:
+ * - Fast non-dominated sorting (O(MN^2));
+ * - assegnamento della crowded distance agli individui della popolazione;
+ * - troncamento degli individui di una popolazione; 
+ * - confronto di non dominanza tra due individui.
  */
 #pragma once
 
@@ -10,6 +15,7 @@
 #include "population.hpp"
 
 #include <vector>
+#include <limits>
 
 struct SortNode {
   int n_p =
@@ -218,11 +224,13 @@ inline void assignCrowdingDistance(const std::vector<int> &front,
 }
 
 /**
- * @brief Seleziona esattamente target_size individui da una popolazione classificata.
+ * @brief Seleziona esattamente target_size individui da una popolazione
+ * classificata.
  */
-inline Population truncatePopulation(Population &combined_pop, 
-                                     const std::vector<std::vector<int>> &fronts, 
-                                     size_t target_size) {
+inline Population
+truncatePopulation(Population &combined_pop,
+                   const std::vector<std::vector<int>> &fronts,
+                   size_t target_size) {
   Population next_gen(target_size);
 
   for (const auto &front : fronts) {
@@ -242,7 +250,8 @@ inline Population truncatePopulation(Population &combined_pop,
 
       size_t needed = target_size - next_gen.size();
       for (size_t i = 0; i < needed; ++i) {
-        next_gen.addIndividual(combined_pop.getIndividual(sorted_last_front[i]));
+        next_gen.addIndividual(
+            combined_pop.getIndividual(sorted_last_front[i]));
       }
       break;
     }
