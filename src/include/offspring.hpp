@@ -16,8 +16,8 @@
 #include "population.hpp"
 #include <vector>
 
-Population generateRandomPopulation(int population_size, int num_bixels,
-                                    std::mt19937 &rng) {
+inline Population generateRandomPopulation(int population_size, int num_bixels,
+                                           std::mt19937 &rng) {
   Population population(population_size);
   std::uniform_real_distribution<double> dist(0.0, 10.0);
 
@@ -32,10 +32,10 @@ Population generateRandomPopulation(int population_size, int num_bixels,
   return population;
 }
 
-Population generateOffSpring(Population &population,
-                             double crossover_probability,
-                             double mutation_probability, double eta_c,
-                             double eta_m, std::mt19937 &rng) {
+inline Population generateOffSpring(Population &population,
+                                    double crossover_probability,
+                                    double mutation_probability, double eta_c,
+                                    double eta_m, std::mt19937 &rng) {
   Population offspring(population.size());
   for (int i = 0; i < population.size() / 2; ++i) {
     // Selezione dei genitori tramite torneo binario
