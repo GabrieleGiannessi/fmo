@@ -18,8 +18,7 @@ void assignPopulationCrowding(
     Population &population, const std::vector<std::vector<int>> &fronts);
 
 Population generatePopulationOffspring(
-    Population &population, double crossover_probability,
-    double mutation_probability, double eta_c, double eta_m,
+    Population &population, double eta_c, double eta_m,
     std::mt19937 &rng);
 
 Population mergePopulations(const Population &population,

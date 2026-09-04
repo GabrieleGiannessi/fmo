@@ -10,12 +10,12 @@
  * senza parallelizzazione.
  */
 
+#include "fmo/core/individual.hpp"
 #include "fmo/evaluation/evaluator.hpp"
 #include "fmo/nsga2/gen-op.hpp"
-#include "fmo/utilities/hpc_helpers.hpp"
-#include "fmo/core/individual.hpp"
 #include "fmo/nsga2/nsga2-steps.hpp"
 #include "fmo/nsga2/offspring.hpp"
+#include "fmo/utilities/hpc_helpers.hpp"
 
 #include "fmo/preprocessing/manager.hpp"
 
@@ -33,10 +33,8 @@ FMODataManager getDataFromPathAndAngles(const std::string &base_dir,
   return manager;
 }
 
-void nsga2seq(Population &pop, int num_generations, int population_size,
-              double crossover_probability, double mutation_probability,
-              double eta_c, double eta_m, Evaluator &evaluator,
-              std::mt19937 &rng) {
+void nsga2seq(Population &pop, int num_generations, int population_size, double eta_c, double eta_m,
+              Evaluator &evaluator, std::mt19937 &rng) {
 
   std::cout << "Esecuzione dell'algoritmo NSGA-II per " << num_generations
             << " generazioni..." << std::endl;
@@ -58,7 +56,7 @@ void nsga2seq(Population &pop, int num_generations, int population_size,
     std::cout << "Generazione " << gen << std::endl;
     // A. Generazione discendenza Q_t (taglia N) tramite Torneo, SBX e Mutazione
     Population offspring = generatePopulationOffspring(
-        pop, crossover_probability, mutation_probability, eta_c, eta_m, rng);
+        pop, eta_c, eta_m, rng);
 
     // B. Valutazione della discendenza Q_t (calcolo delle fitness)
     evaluatePopulation(offspring, evaluator);
@@ -69,7 +67,6 @@ void nsga2seq(Population &pop, int num_generations, int population_size,
     // D. Non-dominated sorting ed estrazione dei fronti su R_t
     auto combined_fronts = sortPopulation(combined_pop);
     assignPopulationCrowding(combined_pop, combined_fronts);
-
 
     // E. Elitismo e troncamento: R_t -> P_{t+1} (taglia N)
     pop = truncatePopulationByFronts(combined_pop, combined_fronts,
@@ -100,7 +97,7 @@ int main(int argc, char *argv[]) {
   // Esecuzione dell'algoritmo NSGA-II per un numero prefissato di generazioni
   TIMERSTART(nsga2seq);
   Evaluator evaluator(manager.getData());
-  nsga2seq(start, 50, 100, 0.9, 0.1, 20.0, 20.0, evaluator, rng);
+  nsga2seq(start, 50, 100, 20.0, 20.0, evaluator, rng);
   TIMERSTOP(nsga2seq);
 
   return 0;

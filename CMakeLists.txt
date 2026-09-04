@@ -29,7 +29,11 @@ target_link_libraries(fmo PRIVATE ${MATIO_LIBRARIES} Eigen3::Eigen)
 target_link_libraries(test-core PRIVATE ${MATIO_LIBRARIES} Eigen3::Eigen)
 target_link_libraries(test-nsga2 PRIVATE ${MATIO_LIBRARIES} Eigen3::Eigen)
 target_link_libraries(nsga2-seq PRIVATE ${MATIO_LIBRARIES} Eigen3::Eigen)
-target_link_libraries(nsga2-omp PUBLIC ${MATIO_LIBRARIES} Eigen3::Eigen OpenMP::OpenMP_CXX)
+target_link_libraries(nsga2-omp PRIVATE
+	${MATIO_LIBRARIES}
+	Eigen3::Eigen
+	OpenMP::OpenMP_CXX
+)
 
 add_test(NAME test-core COMMAND test-core)
 add_test(NAME test-nsga2 COMMAND test-nsga2)

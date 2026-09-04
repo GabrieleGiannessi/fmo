@@ -34,8 +34,8 @@ public:
    * @return true se a è migliore di b, false altrimenti
    */
   static inline bool crowded_compare(const Individual &a, const Individual &b) {
-  if (a.rank != b.rank) {
-    return a.rank < b.rank;
+    if (a.rank != b.rank) {
+      return a.rank < b.rank;
     }
     return a.crowding_distance > b.crowding_distance;
   }
@@ -45,6 +45,10 @@ public:
    * @details Estrae uniformemente a caso due candidati dalla popolazione e
    * seleziona il vincitore tramite il Crowded-Comparison Operator
    * (crowded_compare).
+   * L'estrazione dei campioni è indipendente: la distribuzione di prob.
+   * sull'estrazione degli individui della popolazione non cambia dalle
+   * estrazioni precedenti. Infatti, sia il vincitore che il perdente sono
+   * ri-emessi dentro la popolazione, quindi possono essere di nuovo estratti.
    * @param population Popolazione da cui estrarre i candidati
    * @param rng Generatore di numeri pseudo-casuali (thread-safe)
    * @return Riferimento costante all'individuo genitore selezionato
@@ -67,8 +71,7 @@ public:
    * @brief Crossover SBX (Simulated Binary Crossover) per variabili continue.
    * @param parent1 Primo genitore
    * @param parent2 Secondo genitore
-   * @param crossover_probability Probabilità di applicare il crossover (es.
-   * 0.9)
+   * @param crossover_probability Probabilità di applicare il crossover
    * @param eta_c Indice di distribuzione del crossover, controlla quanto i
    * figli si "allontanano" dai genitori. Valori più alti producono figli più
    * vicini ai genitori
@@ -77,7 +80,8 @@ public:
    */
   static std::pair<Individual, Individual>
   crossover(const Individual &parent1, const Individual &parent2,
-            double crossover_probability, double eta_c, std::mt19937 &rng) {
+            double crossover_probabilityss, double eta_c,
+            std::mt19937 &rng) {
     if (parent1.genes.size() != parent2.genes.size()) {
       throw std::invalid_argument(
           "I genitori devono avere lo stesso numero di geni");
@@ -91,6 +95,7 @@ public:
                    // il calcolo di beta
 
     if (dist(rng) <= crossover_probability) {
+      // loop iterativo sui geni degli individui selezionati per il crossover
       for (size_t i = 0; i < parent1.genes.size(); ++i) {
         // Swap probabilistico per gene (50%)
         if (dist(rng) <= 0.5) {
@@ -118,25 +123,12 @@ public:
   }
 
   /**
-   * @brief Mutazione Polinomiale dei geni dell'individuo.
-   * @details Per ogni gene, con probabilità mutation_probability, viene
-   * applicata la mutazione polinomiale secondo l'indice di distribuzione eta_m.
-   * La mutazione polinomiale genera un nuovo valore del gene vicino al valore
-   * originale, con una distribuzione controllata da eta_m. Valori più alti
-   * di eta_m producono mutazioni più vicine al gene originale, mentre valori
-   * più bassi producono mutazioni più lontane.
-   * La mutazione polinomiale è definita come segue:
-   * - Genera un numero casuale u uniformemente distribuito tra 0 e 1.
-   * - Calcola il fattore di mutazione delta in base a u e eta_m.
-   * - Aggiorna il gene con il nuovo valore calcolato.
-   * @note Dopo la mutazione, viene applicato il clipping per garantire che i
-   * valori dei geni rimangano entro i limiti fisici specificati (min_val e
-   * max_val).
+   * @brief Mutazione Polinomiale dei geni dell'individuo (Deb et al., 2002).
    * @param individual Riferimento all'individuo da mutare in-place
-   * @param mutation_probability Probabilità di mutazione per ciascun gene
-   * (es. 1.0 / num_bixels)
-   * @param eta_m Indice di distribuzione della mutazione (default: 20.0)
-   * @param rng Generatore pseudo-casuale
+   * @param mutation_probability Probabilità di mutazione per singolo gene
+   * (tipicamente 1.0 / num_genes)
+   * @param eta_m Indice di distribuzione della mutazione (tipicamente 20.0)
+   * @param rng Generatore pseudo-casuale deterministico per thread
    * @param min_val Limite inferiore fisico per gene (default: 0.0)
    * @param max_val Limite superiore fisico per gene (default: 100.0)
    */
@@ -145,20 +137,27 @@ public:
                      double max_val = 100.0) {
 
     std::uniform_real_distribution<double> dist(0.0, 1.0);
-    if (dist(rng) <= mutation_probability) {
-      double u = dist(rng);
-      double delta;
-      if (u < 0.5) {
-        delta = std::pow(2.0 * u, 1.0 / (eta_m + 1.0)) - 1.0;
-      } else {
-        delta = 1.0 - std::pow(2.0 * (1.0 - u), 1.0 / (eta_m + 1.0));
-      }
-      for (double &gene : individual.genes) {
-        gene += delta * (max_val - min_val);
+    const double delta_exp = 1.0 / (eta_m + 1.0);
+    const double range = max_val - min_val;
+
+    for (double &gene : individual.genes) {
+      // 1. Controllo indipendente per ciascun gene
+      if (dist(rng) <= mutation_probability) {
+        double u = dist(rng);
+        double delta;
+
+        // 2. Calcolo del fattore polinomiale specifico per questo gene
+        if (u < 0.5) {
+          delta = std::pow(2.0 * u, delta_exp) - 1.0;
+        } else {
+          delta = 1.0 - std::pow(2.0 * (1.0 - u), delta_exp);
+        }
+
+        // 3. Perturbazione e applicazione dei bound fisici
+        gene += delta * range;
+        gene = std::max(min_val, std::min(gene, max_val));
       }
     }
-    // Applicazione del clipping dopo la mutazione
-    clip(individual, min_val, max_val);
   }
 
   /**

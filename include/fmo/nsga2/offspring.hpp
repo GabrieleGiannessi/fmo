@@ -16,6 +16,8 @@
 #include "fmo/nsga2/gen-op.hpp"
 #include <vector>
 
+#define CROSSOVER_PROB 0.9 // probabilità definita da paper (Deb et al., 2002)
+
 inline Population generateRandomPopulation(int population_size, int num_bixels,
                                            std::mt19937 &rng) {
   Population population(population_size);
@@ -34,9 +36,7 @@ inline Population generateRandomPopulation(int population_size, int num_bixels,
   return population;
 }
 
-inline Population generateOffSpring(Population &population,
-                                    double crossover_probability,
-                                    double mutation_probability, double eta_c,
+inline Population generateOffSpring(Population &population, double eta_c,
                                     double eta_m, std::mt19937 &rng) {
   Population offspring(population.size());
   for (int i = 0; i < population.size() / 2; ++i) {
@@ -48,11 +48,11 @@ inline Population generateOffSpring(Population &population,
 
     // Crossover per generare due figli
     auto [child1, child2] = GeneticOperator::crossover(
-        parent1, parent2, crossover_probability, eta_c, rng);
+        parent1, parent2, CROSSOVER_PROB, eta_c, rng);
 
     // Mutazione dei figli
-    GeneticOperator::mutate(child1, mutation_probability, eta_m, rng);
-    GeneticOperator::mutate(child2, mutation_probability, eta_m, rng);
+    GeneticOperator::mutate(child1, 1.0 / static_cast<double>(child1.size()), eta_m, rng);
+    GeneticOperator::mutate(child2, 1.0 / static_cast<double>(child2.size()), eta_m, rng);
 
     // Aggiunta dei figli alla nuova popolazione
     offspring.addIndividual(child1);
@@ -60,32 +60,3 @@ inline Population generateOffSpring(Population &population,
   }
   return offspring;
 }
-
-// inline Population generateOffSpringOmp(Population &population,
-//                                     double crossover_probability,
-//                                     double mutation_probability, double eta_c,
-//                                     double eta_m, std::mt19937 &rng) {
-//   Population offspring(population.size());
-//   for (int i = 0; i < population.size() / 2; ++i) {
-//     // Selezione dei genitori tramite torneo binario
-//     const Individual &parent1 =
-//         GeneticOperator::tournament_selection(population.individuals, rng);
-//     const Individual &parent2 =
-//         GeneticOperator::tournament_selection(population.individuals, rng);
-
-//     // Crossover per generare due figli
-//     auto [child1, child2] = GeneticOperator::crossover(
-//         parent1, parent2, crossover_probability, eta_c, rng);
-
-//     // Mutazione dei figli
-//     GeneticOperator::mutate(child1, mutation_probability, eta_m, rng);
-//     GeneticOperator::mutate(child2, mutation_probability, eta_m, rng);
-
-//     // Aggiunta dei figli alla nuova popolazione
-//     offspring.addIndividual(child1);
-//     offspring.addIndividual(child2);
-//   }
-//   return offspring;
-// }
-
-

@@ -3,9 +3,11 @@
 #include "fmo/nsga2/nsga2-steps-omp.hpp"
 #include "fmo/nsga2/offspring.hpp"
 #include "fmo/utilities/hpc_helpers.hpp"
+#include "omp.h"
 
 // calcolo delle fitness in parallelo (embarassingly parallel)
-void evaluatePopulationOmp(Population &population, Evaluator &evaluator, int nw) {
+void evaluatePopulationOmp(Population &population, Evaluator &evaluator,
+                           int nw) {
   TIMERSTART(population_evaluation);
 #pragma omp parallel for num_threads(nw)
   for (int i = 0; i < static_cast<int>(population.size()); ++i) {
@@ -54,8 +56,8 @@ std::vector<std::vector<int>> sortPopulation(Population &population) {
   return fronts;
 }
 
-void assignPopulationCrowding(
-    Population &population, const std::vector<std::vector<int>> &fronts) {
+void assignPopulationCrowding(Population &population,
+                              const std::vector<std::vector<int>> &fronts) {
   TIMERSTART(population_crowding);
   for (const auto &front : fronts) {
     assignCrowdingDistance(front, population);
@@ -63,14 +65,10 @@ void assignPopulationCrowding(
   TIMERSTOP(population_crowding);
 }
 
-Population generatePopulationOffspring(
-    Population &population, double crossover_probability,
-    double mutation_probability, double eta_c, double eta_m,
-    std::mt19937 &rng) {
+Population generatePopulationOffspring(Population &population, double eta_c,
+                                       double eta_m, std::mt19937 &rng) {
   TIMERSTART(offspring_generation);
-  Population offspring = generateOffSpring(
-      population, crossover_probability, mutation_probability, eta_c, eta_m,
-      rng);
+  Population offspring = generateOffSpring(population, eta_c, eta_m, rng);
   TIMERSTOP(offspring_generation);
   return offspring;
 }
@@ -85,9 +83,10 @@ Population mergePopulations(const Population &population,
   return combined_population;
 }
 
-Population truncatePopulationByFronts(
-    Population &population, const std::vector<std::vector<int>> &fronts,
-    int population_size) {
+Population
+truncatePopulationByFronts(Population &population,
+                           const std::vector<std::vector<int>> &fronts,
+                           int population_size) {
   TIMERSTART(population_truncation);
   Population truncated_population =
       truncatePopulation(population, fronts, population_size);
