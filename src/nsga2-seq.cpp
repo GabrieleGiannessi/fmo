@@ -10,13 +10,12 @@
  * senza parallelizzazione.
  */
 
+#include "include/evaluator.hpp"
 #include "include/gen-op.hpp"
 #include "include/hpc_helpers.hpp"
 #include "include/individual.hpp"
-#include "include/nsga-utils.hpp"
+#include "include/nsga2-steps.hpp"
 #include "include/offspring.hpp"
-#include "include/population.hpp"
-#include "include/evaluator.hpp"
 
 #include "preprocessing/manager.hpp"
 
@@ -36,58 +35,49 @@ FMODataManager getDataFromPathAndAngles(const std::string &base_dir,
 
 void nsga2seq(Population &pop, int num_generations, int population_size,
               double crossover_probability, double mutation_probability,
-              double eta_c, double eta_m, Evaluator &evaluator, std::mt19937 &rng) {
-  
+              double eta_c, double eta_m, Evaluator &evaluator,
+              std::mt19937 &rng) {
+
   std::cout << "Esecuzione dell'algoritmo NSGA-II per " << num_generations
             << " generazioni..." << std::endl;
 
-  std::cout << "Valutazione iniziale degli individui" << std::endl; 
+  std::cout << "Valutazione iniziale degli individui" << std::endl;
 
   // 1. Valutazione iniziale di P_0
-  for (size_t i = 0; i < pop.size(); ++i) {
-    pop.getIndividual(i).setFitness(evaluator.evaluate(pop.getIndividual(i)));
-  }
+  evaluatePopulation(pop, evaluator);
 
-  std::cout << "Classificazione degli individui" << std::endl; 
+  std::cout << "Classificazione degli individui" << std::endl;
+
   // Classificazione iniziale di P_0
-  auto fronts = fastNondominatedSort(pop);
-  for (const auto &front : fronts) {
-    assignCrowdingDistance(front, pop);
-  }
+  auto fronts = sortPopulation(pop);
+  assignPopulationCrowding(pop, fronts);
 
   // 2. Loop Generazionale
   for (int gen = 0; gen < num_generations; ++gen) {
 
-    std::cout << "Generazione " << gen << std::endl; 
+    std::cout << "Generazione " << gen << std::endl;
     // A. Generazione discendenza Q_t (taglia N) tramite Torneo, SBX e Mutazione
-    Population offspring = generateOffSpring(pop, crossover_probability,
-                                             mutation_probability, eta_c, eta_m, rng);
+    Population offspring = generatePopulationOffspring(
+        pop, crossover_probability, mutation_probability, eta_c, eta_m, rng);
 
-    // B. Valutazione della discendenza Q_t
-    for (size_t i = 0; i < offspring.size(); ++i) {
-      offspring.getIndividual(i).setFitness(evaluator.evaluate(offspring.getIndividual(i)));
-    }
+    // B. Valutazione della discendenza Q_t (calcolo delle fitness)
+    evaluatePopulation(offspring, evaluator);
 
     // C. Fusione R_t = P_t U Q_t (taglia 2N)
-    Population combined_pop(population_size * 2);
-    for (size_t i = 0; i < pop.size(); ++i) {
-      combined_pop.addIndividual(pop.getIndividual(i));
-    }
-    for (size_t i = 0; i < offspring.size(); ++i) {
-      combined_pop.addIndividual(offspring.getIndividual(i));
-    }
+    Population combined_pop = mergePopulations(pop, offspring);
 
     // D. Non-dominated sorting ed estrazione dei fronti su R_t
-    auto combined_fronts = fastNondominatedSort(combined_pop);
-    for (const auto &front : combined_fronts) {
-      assignCrowdingDistance(front, combined_pop);
-    }
+    auto combined_fronts = sortPopulation(combined_pop);
+    assignPopulationCrowding(combined_pop, combined_fronts);
+
 
     // E. Elitismo e troncamento: R_t -> P_{t+1} (taglia N)
-    pop = truncatePopulation(combined_pop, combined_fronts, population_size);
+    pop = truncatePopulationByFronts(combined_pop, combined_fronts,
+                                     population_size);
 
-    std::cout << "Generazione " << gen + 1 << "/" << num_generations 
-              << " completata. Fronti di Pareto: " << combined_fronts.size() << std::endl;
+    std::cout << "Generazione " << gen + 1 << "/" << num_generations
+              << " completata. Fronti di Pareto: " << combined_fronts.size()
+              << std::endl;
   }
 }
 
