@@ -10,10 +10,10 @@
 
 /**
  * @brief valutazione delle fitness per un insieme di individui (popolazione) in
- * parallelo (embarassingly parallel). 
+ * parallelo (embarassingly parallel).
  */
-inline void evaluatePopulationOmp(Population &population, Evaluator &evaluator,
-                                  int nw) {
+void evaluatePopulationOmp(Population &population, Evaluator &evaluator,
+                           int nw) {
   TIMERSTART(population_evaluation);
 #pragma omp parallel for num_threads(nw)
   for (int i = 0; i < static_cast<int>(population.size()); ++i) {
@@ -29,9 +29,9 @@ inline void evaluatePopulationOmp(Population &population, Evaluator &evaluator,
  * e calcola il suo PRNG per effettuare poi le chiamate ai metodi di selezione a
  * torneo, crossover e mutazione polinomiale.
  */
-inline Population generatePopulationOffspringOmp(const Population &population,
-                                                 double eta_c, double eta_m,
-                                                 uint64_t base_seed, int nw) {
+Population generatePopulationOffspringOmp(const Population &population,
+                                          double eta_c, double eta_m,
+                                          uint64_t base_seed, int nw) {
   TIMERSTART(offspring_generation);
   const size_t N = population.size();
   Population offspring(N);
@@ -46,7 +46,7 @@ inline Population generatePopulationOffspringOmp(const Population &population,
   {
     int tid = 0;
 #ifdef _OPENMP
-    int tid = omp_get_thread_num();
+    tid = omp_get_thread_num();
 #endif
     // PRNG privato per thread con seed deterministico derivato
     std::mt19937 thread_rng(base_seed + tid * 10007);

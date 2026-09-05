@@ -55,7 +55,8 @@ void nsga2Omp(Population &pop, int num_generations, int population_size,
 
     std::cout << "Generazione " << gen << std::endl;
     // A. Generazione discendenza Q_t (taglia N) tramite Torneo, SBX e Mutazione
-    Population offspring = generatePopulationOffspring(pop, eta_c, eta_m, rng);
+    Population offspring =
+      generatePopulationOffspringOmp(pop, eta_c, eta_m, rng(), nw);
 
     // B. Valutazione della discendenza Q_t (calcolo delle fitness)
     evaluatePopulationOmp(offspring, evaluator, nw);
@@ -85,6 +86,10 @@ int main(int argc, char *argv[]) {
   }
 
   int nw = std::atoi(argv[1]);
+  if (nw < 1){
+    std::cout << "Inserisci un numero valido di workers" << std::endl;
+    exit(1);
+  }
 
   TIMERSTART(data_loading);
   FMODataManager manager = getDataFromPathAndAngles(PATH, GANTRIES);
