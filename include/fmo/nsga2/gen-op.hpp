@@ -80,8 +80,7 @@ public:
    */
   static std::pair<Individual, Individual>
   crossover(const Individual &parent1, const Individual &parent2,
-            double crossover_probability, double eta_c,
-            std::mt19937 &rng) {
+            double crossover_probability, double eta_c, std::mt19937 &rng) {
     if (parent1.genes.size() != parent2.genes.size()) {
       throw std::invalid_argument(
           "I genitori devono avere lo stesso numero di geni");
@@ -127,8 +126,7 @@ public:
    * @param individual Riferimento all'individuo da mutare in-place
    * @param mutation_probability Probabilità di mutazione per singolo gene
    * (tipicamente 1.0 / num_genes)
-   * @param eta_m Indice di distribuzione della mutazione (tipicamente 20.0)
-   * @param rng Generatore pseudo-casuale deterministico per thread
+   * @param eta_m Indice di distribuzione della mutazione
    * @param min_val Limite inferiore fisico per gene (default: 0.0)
    * @param max_val Limite superiore fisico per gene (default: 100.0)
    */

@@ -1,7 +1,8 @@
 /**
  * @file nsga2-omp.cpp
  * @brief Implementazione dell'algoritmo NSGA-II (Deb et al., 2002) con
- * parallelizzazione OpenMP per la generazione della prole.
+ * parallelizzazione OpenMP per la generazione della prole
+ * e le valutazioni delle fitness degli individui della popolazione.
  * @details
  */
 
@@ -30,8 +31,27 @@ FMODataManager getDataFromPathAndAngles(const std::string &base_dir,
   return manager;
 }
 
+/**
+ * @brief esegue l'algoritmo NSGA-II (Deb et al., 2002) usando la libreria
+ * OpenMP per parallelizzare delle parti di calcolo come la generazione delle
+ * popolazioni successive e la valutazione delle fitness degli individui della
+ * popolazione.
+ *
+ * @param pop: popolazione iniziale da cui parte l'algoritmo
+ * @param num_generations numero di generazioni su cui iterare
+ * @param population_size dimensione della popolazione iniziare e di quelle da
+ * generare
+ * @param eta_c Indice di distribuzione del crossover, controlla quanto i
+ * figli si "allontanano" dai genitori. Valori più alti producono figli più
+ * vicini ai genitori
+ * @param eta_m Indice di distribuzione della mutazione
+ * @param evaluator oggetto Evaluator, usato per calcolare le Fitness degli
+ * individui
+ * @param rng pseudo-random number generator
+ * @param nw numero di workers
+ *
+ */
 void nsga2Omp(Population &pop, int num_generations, int population_size,
-              double crossover_probability, double mutation_probability,
               double eta_c, double eta_m, Evaluator &evaluator,
               std::mt19937 &rng, int nw) {
 
@@ -56,7 +76,7 @@ void nsga2Omp(Population &pop, int num_generations, int population_size,
     std::cout << "Generazione " << gen << std::endl;
     // A. Generazione discendenza Q_t (taglia N) tramite Torneo, SBX e Mutazione
     Population offspring =
-      generatePopulationOffspringOmp(pop, eta_c, eta_m, rng(), nw);
+        generatePopulationOffspringOmp(pop, eta_c, eta_m, rng(), nw);
 
     // B. Valutazione della discendenza Q_t (calcolo delle fitness)
     evaluatePopulationOmp(offspring, evaluator, nw);
@@ -86,7 +106,7 @@ int main(int argc, char *argv[]) {
   }
 
   int nw = std::atoi(argv[1]);
-  if (nw < 1){
+  if (nw < 1) {
     std::cout << "Inserisci un numero valido di workers" << std::endl;
     exit(1);
   }
@@ -107,7 +127,7 @@ int main(int argc, char *argv[]) {
   // Esecuzione dell'algoritmo NSGA-II per un numero prefissato di generazioni
   TIMERSTART(nsga2seq);
   Evaluator evaluator(manager.getData());
-  nsga2Omp(start, 50, 100, 0.9, 0.1, 20.0, 20.0, evaluator, rng, nw);
+  nsga2Omp(start, 50, 100, 20.0, 20.0, evaluator, rng, nw);
   TIMERSTOP(nsga2seq);
 
   return 0;
