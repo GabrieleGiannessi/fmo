@@ -33,7 +33,7 @@ public:
 
   // metodo di calcolo delle dosi per ogni voxel utilizzando la matrice di
   // influenza D
-  std::vector<double>
+  const std::vector<double>
   computeDoses(const std::vector<double> &beamlet_intensities) {
     if (beamlet_intensities.size() != static_cast<size_t>(fmo_data.D.cols())) {
       throw std::invalid_argument("Numero di intensita' beamlet non coerente "
@@ -53,8 +53,8 @@ public:
   }
 
   // metodi di calcolo delle singole fitness function per PTV, retto e vescica
-  double computeFitnessPVT(const std::vector<double> &doses,
-                           const Individual &individual) {
+  const double computeFitnessPVT(const std::vector<double> &doses,
+                                 const Individual &individual) {
     double total_dose_ptv = 0.0;
     for (int index : fmo_data.ptv_indices) {
       total_dose_ptv += std::pow(std::max(0.0, PTV_DOSE - doses[index]), 2);
@@ -62,8 +62,8 @@ public:
     return total_dose_ptv / fmo_data.ptv_indices.size();
   }
 
-  double computeFitnessRectum(const std::vector<double> &doses,
-                              const Individual &individual) {
+  const double computeFitnessRectum(const std::vector<double> &doses,
+                                    const Individual &individual) {
     double total_dose_rectum = 0.0;
     for (int index : fmo_data.rectum_indices) {
       total_dose_rectum += doses[index];
@@ -71,8 +71,8 @@ public:
     return total_dose_rectum / fmo_data.rectum_indices.size();
   }
 
-  double computeFitnessBladder(const std::vector<double> &doses,
-                               const Individual &individual) {
+  const double computeFitnessBladder(const std::vector<double> &doses,
+                                     const Individual &individual) {
     double total_dose_bladder = 0.0;
     for (int index : fmo_data.bladder_indices) {
       total_dose_bladder += doses[index];
@@ -82,7 +82,7 @@ public:
 
   // metodo di calcolo delle fitness function, ritorna un Fitness object
   // contenente i punteggi di fitness per PTV, retto e vescica
-  Fitness evaluate(const Individual &individual) {
+  const Fitness evaluate(const Individual &individual) {
     std::vector<double> doses = computeDoses(individual.genes);
     return Fitness(computeFitnessPVT(doses, individual),
                    computeFitnessRectum(doses, individual),
