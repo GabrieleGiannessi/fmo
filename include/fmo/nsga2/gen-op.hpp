@@ -80,7 +80,7 @@ public:
    */
   static std::pair<Individual, Individual>
   crossover(const Individual &parent1, const Individual &parent2,
-            double crossover_probabilityss, double eta_c,
+            double crossover_probability, double eta_c,
             std::mt19937 &rng) {
     if (parent1.genes.size() != parent2.genes.size()) {
       throw std::invalid_argument(

@@ -51,8 +51,10 @@ inline Population generateOffSpring(Population &population, double eta_c,
         parent1, parent2, CROSSOVER_PROB, eta_c, rng);
 
     // Mutazione dei figli
-    GeneticOperator::mutate(child1, 1.0 / static_cast<double>(child1.size()), eta_m, rng);
-    GeneticOperator::mutate(child2, 1.0 / static_cast<double>(child2.size()), eta_m, rng);
+    GeneticOperator::mutate(child1, 1.0 / static_cast<double>(child1.size()),
+                            eta_m, rng);
+    GeneticOperator::mutate(child2, 1.0 / static_cast<double>(child2.size()),
+                            eta_m, rng);
 
     // Aggiunta dei figli alla nuova popolazione
     offspring.addIndividual(child1);
