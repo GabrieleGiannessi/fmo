@@ -106,7 +106,7 @@ void test_random_population_and_offspring() {
     for (double gene : individual.genes)
       check(gene >= 0.0 && gene <= 10.0, "initial genes respect range");
   std::mt19937 offspring_rng(9);
-  Population offspring = generateOffSpring(first, 0.0, 0.0, 20.0, 20.0, offspring_rng);
+  Population offspring = generateOffSpring(first, 20.0, 20.0, offspring_rng);
   check(offspring.size() == first.size(), "offspring preserves even population size");
   for (const Individual &child : offspring.individuals) {
     check(child.size() == 4, "offspring preserves chromosome size");
