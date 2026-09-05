@@ -19,10 +19,8 @@ void evaluatePopulationOmp(Population &population, Evaluator &evaluator,
 
 // generazione della prole parallela
 Population generatePopulationOffspringOmp(Population &population,
-                                          double crossover_probability,
-                                          double mutation_probability,
                                           double eta_c, double eta_m,
-                                          std::mt19937 &rng, int nw);
+                                          size_t base_seed, int nw);
 
 // assegnazione crowding distance parallelo
 void assignPopulationCrowdingOmp(Population &population,
