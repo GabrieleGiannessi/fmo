@@ -9,28 +9,94 @@
 
 using namespace ff;
 
-// devo creare i nodi per l'elaborazione della fitness dato un dato in input
-// (Individuo)
-class FitnessWorker : public ff_node_t<Individual, Individual> {
+/**
+ * @brief valutazione della fitness usando il costrutto ParallelFor di FastFlow
+ * @param population popolazione di individui
+ * @param evaluator oggetto evaluator per il calcolo delle fitness
+ * @param nw number of workers
+ */
+void evaluatePopulationFFParFor(Population &population, Evaluator &evaluator,
+                                int nw) {
+  ParallelFor pf(nw); // map pattern per il calcolo delle fitness in parallelo
+                      // sugli individui
+
+  pf.parallel_for(0,                 // dove inizia l'iterazione
+                  population.size(), // dove finisce l'iterazione
+                  1,                 // stride di 1
+                  0, // politica di scheduling: 0 (partizionamento statico)
+                  [&population, &evaluator](const long i) {
+                    // Evaluator viene letto in const (nessuna race condition)
+                    // La scrittura avviene unicamente nella cella
+                    // dell'individuo i
+                    population.getIndividual(i).setFitness(
+                        evaluator.evaluate(population.getIndividual(i)));
+                  });
+}
+
+struct EvalTask {
+  Individual *ptr_i; // puntatore all'individuo della popolazione
+};
+
+class SolutionEmitter : public ff_node_t<EvalTask> {
+private:
+  Population &population;
+
+public:
+  SolutionEmitter(Population &pop) : population(pop) {}
+
+  EvalTask *svc(EvalTask *) {
+    for (size_t i = 0; i < population.size(); ++i) {
+      // Alloca un puntatore al task e lo spara nel canale lock-free
+      ff_send_out(new EvalTask{&population.getIndividual(i)});
+    }
+    // Segnala la fine dello stream ai worker
+    return EOS;
+  }
+};
+
+class EvalWorker : public ff_node_t<EvalTask> {
 private:
   Evaluator &evaluator;
 
 public:
-  FitnessWorker(Evaluator &e) : evaluator(e) {}
+  EvalWorker(Evaluator &e) : evaluator(e) {}
 
-  Individual *svc(Individual *ind) {
+  EvalTask *svc(EvalTask *ind) {
     if (ind == nullptr) {
       return EOS;
     }
-    ind->setFitness(evaluator.evaluate(*ind));
+    ind->ptr_i->setFitness(evaluator.evaluate(*(ind->ptr_i)));
     return ind;
   }
 };
 
-ParallelFor map_fitness(
-    8); // map pattern per il calcolo delle fitness in parallelo sugli individui
+class SolutionCollector : public ff_node_t<EvalTask> {
+public:
+  EvalTask *svc(EvalTask *task) override {
+    // Libera il descrittore del task
+    delete task;
+    return GO_ON; // Rimane in ascolto del prossimo task
+  }
+};
 
-void evaluatePopulationFF(Population &population, Evaluator &evaluator, int nw);
+void evaluatePopulationFFFarm(Population &population, Evaluator &evaluator,
+                              int nw) {
+
+  SolutionEmitter emitter(population);
+  SolutionCollector collector;
+
+  std::vector<ff_node*> workers;
+  for (int i = 0; i < nw; i++) {
+    workers.push_back(new EvalWorker(evaluator));
+  }
+
+  ff_farm f;
+  f.add_emitter(&emitter);
+  f.add_workers(workers);
+  f.add_collector(&collector);
+
+  f.run_and_wait_end();
+}
 
 /**
  * @brief generazione della nuova prole distribuendo il calcolo dei nuovi
