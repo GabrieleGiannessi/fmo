@@ -14,13 +14,13 @@
  */
 void evaluatePopulationOmp(Population &population, Evaluator &evaluator,
                            int nw) {
-  TIMERSTART(population_evaluation);
+  // TIMERSTART(population_evaluation);
 #pragma omp parallel for num_threads(nw)
   for (int i = 0; i < static_cast<int>(population.size()); ++i) {
     auto &individual = population.getIndividual(i);
     individual.setFitness(evaluator.evaluate(individual));
   }
-  TIMERSTOP(population_evaluation);
+  // TIMERSTOP(population_evaluation);
 }
 
 /**
@@ -32,7 +32,7 @@ void evaluatePopulationOmp(Population &population, Evaluator &evaluator,
 Population generatePopulationOffspringOmp(const Population &population,
                                           double eta_c, double eta_m,
                                           uint64_t base_seed, int nw) {
-  TIMERSTART(offspring_generation);
+  // TIMERSTART(offspring_generation);
   const size_t N = population.size();
   Population offspring(N);
 
@@ -75,33 +75,33 @@ Population generatePopulationOffspringOmp(const Population &population,
       }
     }
   }
-  TIMERSTOP(offspring_generation);
+  // TIMERSTOP(offspring_generation);
   return offspring;
 }
 
 std::vector<std::vector<int>> sortPopulation(Population &population) {
-  TIMERSTART(population_sorting);
+  // TIMERSTART(population_sorting);
   auto fronts = fastNondominatedSort(population);
-  TIMERSTOP(population_sorting);
+  // TIMERSTOP(population_sorting);
   return fronts;
 }
 
 void assignPopulationCrowding(Population &population,
                               const std::vector<std::vector<int>> &fronts) {
-  TIMERSTART(population_crowding);
+  // TIMERSTART(population_crowding);
   for (const auto &front : fronts) {
     assignCrowdingDistance(front, population);
   }
-  TIMERSTOP(population_crowding);
+  // TIMERSTOP(population_crowding);
 }
 
 Population mergePopulations(const Population &population,
                             const Population &offspring) {
-  TIMERSTART(population_merge);
+  // TIMERSTART(population_merge);
   Population combined_population(population.size() + offspring.size());
   combined_population.addIndividuals(population.individuals);
   combined_population.addIndividuals(offspring.individuals);
-  TIMERSTOP(population_merge);
+  // TIMERSTOP(population_merge);
   return combined_population;
 }
 
@@ -109,9 +109,9 @@ Population
 truncatePopulationByFronts(Population &population,
                            const std::vector<std::vector<int>> &fronts,
                            int population_size) {
-  TIMERSTART(population_truncation);
+  // TIMERSTART(population_truncation);
   Population truncated_population =
       truncatePopulation(population, fronts, population_size);
-  TIMERSTOP(population_truncation);
+  // TIMERSTOP(population_truncation);
   return truncated_population;
 }
