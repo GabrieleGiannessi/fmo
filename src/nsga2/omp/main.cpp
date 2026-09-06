@@ -14,9 +14,14 @@
 #include "fmo/nsga2/offspring.hpp"
 #include "fmo/preprocessing/manager.hpp"
 #include "fmo/utilities/hpc_helpers.hpp"
+#include "fmo/utilities/utimer.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
+#include <map>
+#include <numeric>
+#include <string>
 #include <vector>
 
 #define GANTRIES                                                               \
@@ -53,48 +58,72 @@ FMODataManager getDataFromPathAndAngles(const std::string &base_dir,
  */
 void nsga2Omp(Population &pop, int num_generations, int population_size,
               double eta_c, double eta_m, Evaluator &evaluator,
-              std::mt19937 &rng, int nw) {
-
-  //   std::cout << "Esecuzione dell'algoritmo NSGA-II per " << num_generations
-  //             << " generazioni..." << std::endl;
-
-  //   std::cout << "Valutazione iniziale degli individui" << std::endl;
+              std::mt19937 &rng, int nw,
+              std::map<std::string, std::vector<long>> &samples) {
+  auto measure = [&](const std::string &phase, auto operation) {
+    long elapsed_ms = 0;
+    {
+      utimer timer(phase, &elapsed_ms, true);
+      operation();
+    }
+    samples[phase].push_back(elapsed_ms);
+  };
 
   // 1. Valutazione iniziale di P_0 usando il metodo parallelizzato tramite la
   // libreria OpenMP
-  evaluatePopulationOmp(pop, evaluator, nw);
-
-  std::cout << "Classificazione degli individui" << std::endl;
+  measure("initial_evaluation", [&] {
+    evaluatePopulationOmp(pop, evaluator, nw);
+  });
 
   // Classificazione iniziale di P_0
-  auto fronts = sortPopulation(pop);
-  assignPopulationCrowding(pop, fronts);
+  std::vector<std::vector<int>> fronts;
+  measure("initial_sorting", [&] { fronts = sortPopulation(pop); });
+  measure("initial_crowding", [&] {
+    assignPopulationCrowding(pop, fronts);
+  });
 
   // 2. Loop Generazionale
   for (int gen = 0; gen < num_generations; ++gen) {
+    long generation_ms = 0;
+    {
+      utimer generation_timer("generation_total", &generation_ms, true);
 
-    std::cout << "Generazione " << gen << std::endl;
-    // A. Generazione discendenza Q_t (taglia N) tramite Torneo, SBX e Mutazione
-    Population offspring =
-        generatePopulationOffspringOmp(pop, eta_c, eta_m, rng(), nw);
+      // A. Generazione discendenza Q_t (taglia N) tramite Torneo, SBX e Mutazione
+      Population offspring;
+      measure("offspring_generation", [&] {
+        offspring = generatePopulationOffspringOmp(pop, eta_c, eta_m, rng(), nw);
+      });
 
-    // B. Valutazione della discendenza Q_t (calcolo delle fitness)
-    evaluatePopulationOmp(offspring, evaluator, nw);
+      // B. Valutazione della discendenza Q_t (calcolo delle fitness)
+      measure("population_evaluation", [&] {
+        evaluatePopulationOmp(offspring, evaluator, nw);
+      });
 
-    // C. Fusione R_t = P_t U Q_t (taglia 2N)
-    Population combined_pop = mergePopulations(pop, offspring);
+      // C. Fusione R_t = P_t U Q_t (taglia 2N)
+      Population combined_pop;
+      measure("population_merge", [&] {
+        combined_pop = mergePopulations(pop, offspring);
+      });
 
-    // D. Non-dominated sorting ed estrazione dei fronti su R_t
-    auto combined_fronts = sortPopulation(combined_pop);
-    assignPopulationCrowding(combined_pop, combined_fronts);
+      // D. Non-dominated sorting ed estrazione dei fronti su R_t
+      std::vector<std::vector<int>> combined_fronts;
+      measure("population_sorting", [&] {
+        combined_fronts = sortPopulation(combined_pop);
+      });
+      measure("population_crowding", [&] {
+        assignPopulationCrowding(combined_pop, combined_fronts);
+      });
 
-    // E. Elitismo e troncamento: R_t -> P_{t+1} (taglia N)
-    pop = truncatePopulationByFronts(combined_pop, combined_fronts,
-                                     population_size);
+      // E. Elitismo e troncamento: R_t -> P_{t+1} (taglia N)
+      measure("population_truncation", [&] {
+        pop = truncatePopulationByFronts(combined_pop, combined_fronts,
+                                         population_size);
+      });
+    }
+    if (gen > 0) {
+      samples["generation_total"].push_back(generation_ms);
+    }
 
-    std::cout << "Generazione " << gen + 1 << "/" << num_generations
-              << " completata. Fronti di Pareto: " << combined_fronts.size()
-              << std::endl;
   }
 }
 
@@ -111,24 +140,66 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
-  TIMERSTART(data_loading);
-  FMODataManager manager = getDataFromPathAndAngles(PATH, GANTRIES);
+  constexpr int population_size = 100;
+  constexpr int num_generations = 50;
+  std::map<std::string, std::vector<long>> samples;
+
+  std::cout << "RUN variant=omp mode=openmp workers=" << nw
+            << " generations=" << num_generations << " population="
+            << population_size << std::endl;
+
+  long data_loading_ms = 0;
+  FMODataManager manager;
+  {
+    utimer timer("data_loading", &data_loading_ms, true);
+    manager = getDataFromPathAndAngles(PATH, GANTRIES);
+  }
+  samples["data_loading"].push_back(data_loading_ms);
   // manager.printSummary();
-  TIMERSTOP(data_loading);
 
   // generazione della popolazione iniziale
-  TIMERSTART(inizial_population);
+  long initial_population_ms = 0;
   std::mt19937 rng(42); // Inizializza il generatore di numeri casuali con un
                         // seed fisso per la riproducibilità
-  Population start =
-      generateRandomPopulation(100, manager.getTotalBeamlets(), rng);
-  TIMERSTOP(inizial_population);
+  Population start;
+  {
+    utimer timer("initial_population", &initial_population_ms, true);
+    start = generateRandomPopulation(population_size,
+                                     manager.getTotalBeamlets(), rng);
+  }
+  samples["initial_population"].push_back(initial_population_ms);
 
   // Esecuzione dell'algoritmo NSGA-II per un numero prefissato di generazioni
-  TIMERSTART(nsga2seq);
+  long nsga2_total_ms = 0;
   Evaluator evaluator(manager.getData());
-  nsga2Omp(start, 50, 100, 20.0, 20.0, evaluator, rng, nw);
-  TIMERSTOP(nsga2seq);
+  {
+    utimer timer("nsga2_total", &nsga2_total_ms, true);
+    nsga2Omp(start, num_generations, population_size, 20.0, 20.0, evaluator,
+             rng, nw, samples);
+  }
+  samples["nsga2_total"].push_back(nsga2_total_ms);
+
+  for (const auto &[phase, values] : samples) {
+    std::vector<long> filtered(values.begin(), values.end());
+    if (phase != "data_loading" && phase != "initial_population" &&
+        phase != "nsga2_total" && filtered.size() > 1) {
+      filtered.erase(filtered.begin());
+    }
+    if (filtered.empty()) {
+      continue;
+    }
+    std::sort(filtered.begin(), filtered.end());
+    const double mean = static_cast<double>(
+        std::accumulate(filtered.begin(), filtered.end(), 0L)) /
+        filtered.size();
+    const double median = filtered.size() % 2 == 0
+        ? (filtered[filtered.size() / 2 - 1] +
+           filtered[filtered.size() / 2]) / 2.0
+        : filtered[filtered.size() / 2];
+    std::cout << "TIMING variant=omp mode=openmp phase=" << phase
+              << " samples=" << filtered.size() << " mean_ms=" << mean
+              << " median_ms=" << median << std::endl;
+  }
 
   return 0;
 }

@@ -14,9 +14,14 @@
 #include "fmo/nsga2/offspring.hpp"
 #include "fmo/preprocessing/manager.hpp"
 #include "fmo/utilities/hpc_helpers.hpp"
+#include "fmo/utilities/utimer.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
+#include <map>
+#include <numeric>
+#include <string>
 #include <vector>
 
 #define GANTRIES                                                               \
@@ -53,71 +58,85 @@ FMODataManager getDataFromPathAndAngles(const std::string &base_dir,
  */
 void nsga2ff(Population &pop, int num_generations, int population_size,
              double eta_c, double eta_m, Evaluator &evaluator,
-             std::mt19937 &rng, int nw, int mod) {
+             std::mt19937 &rng, int nw, int mod,
+             std::map<std::string, std::vector<long>> &samples) {
+  auto measure = [&](const std::string &phase, auto operation) {
+    long elapsed_ms = 0;
+    {
+      utimer timer(phase, &elapsed_ms, true);
+      operation();
+    }
+    samples[phase].push_back(elapsed_ms);
+  };
 
   if (mod == 0) {
-    TIMERSTART(eval_fitness);
-    evaluatePopulationFFParFor(pop, evaluator, nw);
-    TIMERSTOP(eval_fitness);
+    measure("initial_evaluation", [&] {
+      evaluatePopulationFFParFor(pop, evaluator, nw);
+    });
   } else {
-    TIMERSTART(eval_fitness);
-    evaluatePopulationFFFarm(pop, evaluator, nw);
-    TIMERSTOP(eval_fitness);
+    measure("initial_evaluation", [&] {
+      evaluatePopulationFFFarm(pop, evaluator, nw);
+    });
   }
 
   // Classificazione iniziale di P_0
-  TIMERSTART(sorting);
-  auto fronts = sortPopulation(pop);
-  TIMERSTOP(sorting);
+  std::vector<std::vector<int>> fronts;
+  measure("initial_sorting", [&] { fronts = sortPopulation(pop); });
 
   // assegnazione distance crowding iniziale alla P_0
-  TIMERSTART(crowding);
-  assignPopulationCrowding(pop, fronts);
-  TIMERSTOP(crowding);
+  measure("initial_crowding", [&] {
+    assignPopulationCrowding(pop, fronts);
+  });
 
   // 2. Loop Generazionale
   for (int gen = 0; gen < num_generations; ++gen) {
+    long generation_ms = 0;
+    {
+      utimer generation_timer("generation_total", &generation_ms, true);
 
-    // std::cout << "Generazione " << gen << std::endl;
-    // A. Generazione discendenza Q_t (taglia N) tramite Torneo, SBX e Mutazione
-    TIMERSTART(offspring_generation);
-    Population offspring = generatePopulationOffspring(pop, eta_c, eta_m, rng);
-    TIMERSTOP(offspring_generation);
+      // A. Generazione discendenza Q_t (taglia N) tramite Torneo, SBX e Mutazione
+      Population offspring;
+      measure("offspring_generation", [&] {
+        offspring = generatePopulationOffspring(pop, eta_c, eta_m, rng);
+      });
 
-    // B. Valutazione della discendenza Q_t (calcolo delle fitness)
-    if (mod == 0) {
-      TIMERSTART(eval_fitness);
-      evaluatePopulationFFParFor(offspring, evaluator, nw);
-      TIMERSTOP(eval_fitness);
-    } else {
-      TIMERSTART(eval_fitness);
-      evaluatePopulationFFFarm(offspring, evaluator, nw);
-      TIMERSTOP(eval_fitness);
+      // B. Valutazione della discendenza Q_t (calcolo delle fitness)
+      if (mod == 0) {
+        measure("population_evaluation", [&] {
+          evaluatePopulationFFParFor(offspring, evaluator, nw);
+        });
+      } else {
+        measure("population_evaluation", [&] {
+          evaluatePopulationFFFarm(offspring, evaluator, nw);
+        });
+      }
+
+      // C. Fusione R_t = P_t U Q_t (taglia 2N)
+      Population combined_pop;
+      measure("population_merge", [&] {
+        combined_pop = mergePopulations(pop, offspring);
+      });
+
+      // D. Non-dominated sorting ed estrazione dei fronti su R_t
+      std::vector<std::vector<int>> combined_fronts;
+      measure("population_sorting", [&] {
+        combined_fronts = sortPopulation(combined_pop);
+      });
+
+      measure("population_crowding", [&] {
+        assignPopulationCrowding(combined_pop, combined_fronts);
+      });
+
+      // E. Elitismo e troncamento: R_t -> P_{t+1} (taglia N)
+      measure("population_truncation", [&] {
+        pop = truncatePopulationByFronts(combined_pop, combined_fronts,
+                                         population_size);
+      });
+
     }
-
-    // C. Fusione R_t = P_t U Q_t (taglia 2N)
-    TIMERSTART(merge_pop);
-    Population combined_pop = mergePopulations(pop, offspring);
-    TIMERSTOP(merge_pop);
-
-    // D. Non-dominated sorting ed estrazione dei fronti su R_t
-    TIMERSTART(sorting);
-    auto combined_fronts = sortPopulation(combined_pop);
-    TIMERSTOP(sorting);
-
-    TIMERSTART(crowding);
-    assignPopulationCrowding(combined_pop, combined_fronts);
-    TIMERSTOP(crowding);
-
-    // E. Elitismo e troncamento: R_t -> P_{t+1} (taglia N)
-    TIMERSTART(elitism);
-    pop = truncatePopulationByFronts(combined_pop, combined_fronts,
-                                     population_size);
-    TIMERSTOP(elitism);
-
-    // std::cout << "Generazione " << gen + 1 << "/" << num_generations
-    //           << " completata. Fronti di Pareto: " << combined_fronts.size()
-    //           << std::endl;
+    if (gen > 0) {
+      samples["generation_total"].push_back(generation_ms);
+    }
   }
 }
 
@@ -143,21 +162,69 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
-  TIMERSTART(data_loading);
-  FMODataManager manager = getDataFromPathAndAngles(PATH, GANTRIES);
+  constexpr int population_size = 100;
+  constexpr int num_generations = 50;
+  const char *mode_name = mod == 0 ? "parfor" : "farm";
+  std::map<std::string, std::vector<long>> samples;
+
+  std::cout << "RUN variant=ff mode=" << mode_name << " workers=" << nw
+            << " generations=" << num_generations << " population="
+            << population_size << std::endl;
+
+  long data_loading_ms = 0;
+  FMODataManager manager;
+  {
+    utimer timer("data_loading", &data_loading_ms, true);
+    manager = getDataFromPathAndAngles(PATH, GANTRIES);
+  }
+  samples["data_loading"].push_back(data_loading_ms);
   // manager.printSummary();
-  TIMERSTOP(data_loading);
 
   // generazione della popolazione iniziale
-  TIMERSTART(initial_population);
+  long initial_population_ms = 0;
   std::mt19937 rng(42); // Inizializza il generatore di numeri casuali con un
                         // seed fisso per la riproducibilità
-  Population start =
-      generateRandomPopulation(100, manager.getTotalBeamlets(), rng);
-  TIMERSTOP(initial_population);
+  Population start;
+  {
+    utimer timer("initial_population", &initial_population_ms, true);
+    start = generateRandomPopulation(population_size,
+                                     manager.getTotalBeamlets(), rng);
+  }
+  samples["initial_population"].push_back(initial_population_ms);
 
-  TIMERSTART(nsga2ff);
+  long nsga2_total_ms = 0;
   Evaluator evaluator(manager.getData());
-  nsga2ff(start, 50, 100, 20.0, 20.0, evaluator, rng, nw, mod);
-  TIMERSTOP(nsga2ff);
+  {
+    utimer timer("nsga2_total", &nsga2_total_ms, true);
+    nsga2ff(start, num_generations, population_size, 20.0, 20.0, evaluator,
+            rng, nw, mod, samples);
+  }
+  samples["nsga2_total"].push_back(nsga2_total_ms);
+
+  for (const auto &[phase, values] : samples) {
+    std::vector<long> filtered(values.begin(), values.end());
+    if (phase != "data_loading" && phase != "initial_population" &&
+        phase != "nsga2_total" && filtered.size() > 1) {
+      filtered.erase(filtered.begin());
+    }
+    if (filtered.empty()) {
+      continue;
+    }
+    std::sort(filtered.begin(), filtered.end());
+    const double mean = static_cast<double>(
+        std::accumulate(filtered.begin(), filtered.end(), 0L)) /
+        filtered.size();
+    const double median = filtered.size() % 2 == 0
+        ? (filtered[filtered.size() / 2 - 1] +
+           filtered[filtered.size() / 2]) / 2.0
+        : filtered[filtered.size() / 2];
+    std::cout << "TIMING variant=ff mode=" << mode_name << " phase="
+              << phase << " samples=" << filtered.size()
+              << " mean_ms=" << mean << " median_ms=" << median
+              << std::endl;
+  }
+
+  return 0;
+
+  return 0;
 }
