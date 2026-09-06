@@ -107,33 +107,3 @@ void evaluatePopulationFFFarm(Population &population, Evaluator &evaluator,
 Population generatePopulationOffspringFF(const Population &population,
                                          double eta_c, double eta_m,
                                          uint64_t base_seed, int nw);
-
-// void assignPopulationCrowding(Population &population,
-//                               const std::vector<std::vector<int>> &fronts) {
-//   TIMERSTART(population_crowding);
-//   for (const auto &front : fronts) {
-//     assignCrowdingDistance(front, population);
-//   }
-//   TIMERSTOP(population_crowding);
-// }
-//
-// Population mergePopulations(const Population &population,
-//                             const Population &offspring) {
-//   TIMERSTART(population_merge);
-//   Population combined_population(population.size() + offspring.size());
-//   combined_population.addIndividuals(population.individuals);
-//   combined_population.addIndividuals(offspring.individuals);
-//   TIMERSTOP(population_merge);
-//   return combined_population;
-// }
-//
-// Population
-// truncatePopulationByFronts(Population &population,
-//                            const std::vector<std::vector<int>> &fronts,
-//                            int population_size) {
-//   TIMERSTART(population_truncation);
-//   Population truncated_population =
-//       truncatePopulation(population, fronts, population_size);
-//   TIMERSTOP(population_truncation);
-//   return truncated_population;
-// }
