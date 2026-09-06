@@ -20,12 +20,21 @@ set(FASTFLOW_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../fastflow")
 add_executable(fmo tests/load-matrix.cpp)
 add_executable(test-core tests/test-core.cpp)
 add_executable(test-nsga2 tests/test-nsga2.cpp)
-add_executable(nsga2-seq src/nsga2/seq/engine-seq.cpp src/nsga2/seq/main.cpp)
-add_executable(nsga2-omp src/nsga2/omp/engine-omp.cpp src/nsga2/omp/main.cpp)
+add_executable(nsga2-seq
+	src/nsga2/seq/engine-seq.cpp
+	src/nsga2/seq/main.cpp
+	include/fmo/utilities/utimer.cpp
+)
+add_executable(nsga2-omp
+	src/nsga2/omp/engine-omp.cpp
+	src/nsga2/omp/main.cpp
+	include/fmo/utilities/utimer.cpp
+)
 add_executable(nsga2-ff
 	src/nsga2/ff/engine-ff.cpp
 	src/nsga2/ff/main.cpp
 	src/nsga2/seq/engine-seq.cpp
+	include/fmo/utilities/utimer.cpp
 )
 
 set(FMO_TARGETS fmo test-core test-nsga2 nsga2-seq nsga2-omp nsga2-ff)
