@@ -16,9 +16,7 @@ endif()
 # Opzione per dare precedenza ai repository git clonati in locale
 option(FMO_USE_LOCAL_DEPS "Prioritizza i cloni git locali per FastFlow, Eigen e Matio" ON)
 
-# ==============================================================================
 # 1. FastFlow (Header-only)
-# ==============================================================================
 set(FASTFLOW_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../fastflow" CACHE PATH "Percorso della cartella FastFlow")
 if(NOT EXISTS "${FASTFLOW_DIR}/ff")
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../fastflow/ff")
@@ -34,9 +32,7 @@ else()
     message(WARNING "Cartella FastFlow non trovata in ${FASTFLOW_DIR}")
 endif()
 
-# ==============================================================================
 # 2. Eigen3 (Header-only)
-# ==============================================================================
 set(EIGEN3_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../eigen" CACHE PATH "Percorso della cartella Eigen3")
 
 if(FMO_USE_LOCAL_DEPS AND EXISTS "${EIGEN3_ROOT}/Eigen/Dense")
@@ -58,9 +54,7 @@ else()
     endif()
 endif()
 
-# ==============================================================================
 # 3. Matio (Libreria C compilata)
-# ==============================================================================
 set(MATIO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../matio" CACHE PATH "Percorso della cartella matio")
 
 if(FMO_USE_LOCAL_DEPS AND EXISTS "${MATIO_DIR}/CMakeLists.txt")
@@ -102,62 +96,56 @@ else()
     message(FATAL_ERROR "matio non trovato né come pacchetto di sistema né nella cartella ${MATIO_DIR}")
 endif()
 
-# ==============================================================================
 # 4. Altre dipendenze standard
-# ==============================================================================
 find_package(OpenMP REQUIRED)
 find_package(Threads REQUIRED)
 
-# ==============================================================================
 # 5. Definizione degli eseguibili
-# ==============================================================================
 add_executable(fmo tests/load-matrix.cpp)
 add_executable(test-core tests/test-core.cpp)
 add_executable(test-nsga2 tests/test-nsga2.cpp)
 add_executable(nsga2-seq
-	src/nsga2/seq/engine-seq.cpp
-	src/nsga2/seq/main.cpp
-	include/fmo/utilities/utimer.cpp
+    src/nsga2/seq/engine-seq.cpp
+    src/nsga2/seq/main.cpp
+    include/fmo/utilities/utimer.cpp
 )
 add_executable(nsga2-omp
-	src/nsga2/omp/engine-omp.cpp
-	src/nsga2/omp/main.cpp
-	include/fmo/utilities/utimer.cpp
+    src/nsga2/omp/engine-omp.cpp
+    src/nsga2/omp/main.cpp
+    include/fmo/utilities/utimer.cpp
 )
 add_executable(nsga2-ff
-	src/nsga2/ff/engine-ff.cpp
-	src/nsga2/ff/main.cpp
-	src/nsga2/seq/engine-seq.cpp
-	include/fmo/utilities/utimer.cpp
+    src/nsga2/ff/engine-ff.cpp
+    src/nsga2/ff/main.cpp
+    src/nsga2/seq/engine-seq.cpp
+    include/fmo/utilities/utimer.cpp
 )
 
 set(FMO_TARGETS fmo test-core test-nsga2 nsga2-seq nsga2-omp nsga2-ff)
 foreach(target IN LISTS FMO_TARGETS)
-	target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 endforeach()
 
 if(TARGET fastflow)
-	target_link_libraries(nsga2-ff PRIVATE fastflow)
+    target_link_libraries(nsga2-ff PRIVATE fastflow)
 else()
-	target_include_directories(nsga2-ff PRIVATE ${FASTFLOW_DIR})
+    target_include_directories(nsga2-ff PRIVATE ${FASTFLOW_DIR})
 endif()
 
-# ==============================================================================
 # 6. Linking delle librerie
-# ==============================================================================
 target_link_libraries(fmo PRIVATE ${MATIO_TARGET} Eigen3::Eigen)
 target_link_libraries(test-core PRIVATE ${MATIO_TARGET} Eigen3::Eigen)
 target_link_libraries(test-nsga2 PRIVATE ${MATIO_TARGET} Eigen3::Eigen)
 target_link_libraries(nsga2-seq PRIVATE ${MATIO_TARGET} Eigen3::Eigen)
 target_link_libraries(nsga2-omp PRIVATE
-	${MATIO_TARGET}
-	Eigen3::Eigen
-	OpenMP::OpenMP_CXX
+    ${MATIO_TARGET}
+    Eigen3::Eigen
+    OpenMP::OpenMP_CXX
 )
 target_link_libraries(nsga2-ff PRIVATE
-	${MATIO_TARGET}
-	Eigen3::Eigen
-	Threads::Threads
+    ${MATIO_TARGET}
+    Eigen3::Eigen
+    Threads::Threads
 )
 
 add_test(NAME test-core COMMAND test-core)
