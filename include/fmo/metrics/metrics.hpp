@@ -1,3 +1,4 @@
+#pragma once
 
 /**
  * @file metrics.hpp
@@ -8,8 +9,88 @@
 
 #include <algorithm>
 #include <cmath>
-#include <fmo/core/population.hpp>
+#include <fstream>
+#include <iomanip>
+#include <sstream>
+#include <string>
 #include <vector>
+#include <fmo/core/population.hpp>
+
+/**
+ * @brief Salva una popolazione su file in formato CSV.
+ * @param pop Popolazione da salvare.
+ * @param filepath Percorso del file di destinazione.
+ */
+inline void savePopulation(const Population &pop, const std::string &filepath) {
+  std::ofstream out(filepath);
+  if (!out.is_open()) {
+    throw std::runtime_error("Impossibile aprire il file per la scrittura: " + filepath);
+  }
+  const size_t N = pop.size();
+  const size_t G = (N > 0) ? pop.getIndividual(0).genes.size() : 0;
+  out << "# population_size=" << N << " num_genes=" << G << "\n";
+  out << "# rank,crowding_distance,ptv_fitness,rectal_fitness,bladder_fitness,genes...\n";
+  out << std::setprecision(14);
+  for (size_t i = 0; i < N; ++i) {
+    const auto &ind = pop.getIndividual(i);
+    out << ind.getRank() << ","
+        << ind.getCrowdingDistance() << ","
+        << ind.getFitness().getPTVFitness() << ","
+        << ind.getFitness().getRectalFitness() << ","
+        << ind.getFitness().getBladderFitness();
+    for (double g : ind.genes) {
+      out << "," << g;
+    }
+    out << "\n";
+  }
+}
+
+/**
+ * @brief Carica una popolazione da file CSV generato tramite savePopulation.
+ * @param filepath Percorso del file da leggere.
+ * @return Popolazione ricostruita.
+ */
+inline Population loadPopulation(const std::string &filepath) {
+  std::ifstream in(filepath);
+  if (!in.is_open()) {
+    throw std::runtime_error("Impossibile aprire il file per la lettura: " + filepath);
+  }
+  Population pop;
+  std::string line;
+  while (std::getline(in, line)) {
+    if (line.empty() || line[0] == '#') {
+      continue;
+    }
+    std::stringstream ss(line);
+    std::string token;
+
+    if (!std::getline(ss, token, ',')) continue;
+    int rank = std::stoi(token);
+
+    if (!std::getline(ss, token, ',')) continue;
+    double cd = std::stod(token);
+
+    if (!std::getline(ss, token, ',')) continue;
+    double ptv = std::stod(token);
+
+    if (!std::getline(ss, token, ',')) continue;
+    double rectum = std::stod(token);
+
+    if (!std::getline(ss, token, ',')) continue;
+    double bladder = std::stod(token);
+
+    std::vector<double> genes;
+    while (std::getline(ss, token, ',')) {
+      genes.push_back(std::stod(token));
+    }
+
+    Individual ind(genes, Fitness(ptv, rectum, bladder));
+    ind.setRank(rank);
+    ind.setCrowdingDistance(cd);
+    pop.addIndividual(ind);
+  }
+  return pop;
+}
 
 /**
  * Struttura usata per il calcolo della Root Mean Square Error (RMSE) dei valori
@@ -28,13 +109,7 @@ struct PopulationDiscrepancy {
  * (F_1).
  * @details Misura l'uniformità di distribuzione spaziale delle soluzioni non
  * dominate. In assenza di una frontiera ottima teorica a priori, gli estremi
- * della frontiera ve
-
-/**
- * @brief Calcola lo scarto quadratico medio (RMSE) tra la popolazione finale
- *        ottenuta in sequenziale e quella ottenuta in parallelo.
- * @param pop_seq Popolazione finale prodotta dalla baseline sequenziale.
- *ngono identificati come i minimi/massimi osservati
+ * della frontiera vengono identificati come i minimi/massimi osservati
  * all'interno dello stesso fronte.
  * @param population Popolazione finale valutata e classificata (con rank
  * assegnati).
@@ -114,14 +189,20 @@ inline PopulationDiscrepancy computePopulationRMSE(Population pop_seq,
 
   const size_t N = pop_seq.size();
 
-  // 1. Ordina entrambe le popolazioni per PTV fitness per allineare gli
-  // individui corrispondenti
-  auto sortByPTV = [](Individual &a, Individual &b) {
-    return a.getFitness().getPTVFitness() < b.getFitness().getPTVFitness();
+  // 1. Ordina entrambe le popolazioni per PTV fitness (e tie-break su altri obiettivi)
+  // per allineare gli individui corrispondenti
+  auto sortByObjectives = [](const Individual &a, const Individual &b) {
+    if (a.getFitness().getPTVFitness() != b.getFitness().getPTVFitness()) {
+      return a.getFitness().getPTVFitness() < b.getFitness().getPTVFitness();
+    }
+    if (a.getFitness().getRectalFitness() != b.getFitness().getRectalFitness()) {
+      return a.getFitness().getRectalFitness() < b.getFitness().getRectalFitness();
+    }
+    return a.getFitness().getBladderFitness() < b.getFitness().getBladderFitness();
   };
 
-  std::sort(pop_seq.individuals.begin(), pop_seq.individuals.end(), sortByPTV);
-  std::sort(pop_par.individuals.begin(), pop_par.individuals.end(), sortByPTV);
+  std::sort(pop_seq.individuals.begin(), pop_seq.individuals.end(), sortByObjectives);
+  std::sort(pop_par.individuals.begin(), pop_par.individuals.end(), sortByObjectives);
 
   double sum_sq_ptv = 0.0;
   double sum_sq_rectum = 0.0;

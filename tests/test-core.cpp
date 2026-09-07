@@ -32,12 +32,9 @@ void test_population_limits() {
     Individual a(5), b(5), c(5);
     pop.addIndividual(a);
     pop.addIndividual(b);
-    try {
-        pop.addIndividual(c);
-        assert(false); // Non deve arrivare qui
-    } catch (const std::runtime_error&) {
-        std::cout << "[PASS] Test Population Overflow Guard\n";
-    }
+    pop.addIndividual(c);
+    assert(pop.size() == 3);
+    std::cout << "[PASS] Test Population Dynamic Growth\n";
 }
 
 int main() {

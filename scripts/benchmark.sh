@@ -225,6 +225,7 @@ for v in "${UNIQUE_VARIANTS[@]}"; do
         ff-parfor|ff-farm) check_binary "nsga2-ff" ;;
     esac
 done
+check_binary "compute-rmse"
 
 # Calcolo numero totale di test previsti
 TOTAL_TESTS=0
@@ -286,6 +287,8 @@ fi
 
 # Creazione cartelle di output
 mkdir -p "$RAW_LOGS_DIR"
+POPULATIONS_DIR="${OUTPUT_DIR}/populations"
+mkdir -p "$POPULATIONS_DIR"
 
 # Raccolta informazioni di sistema (hardware, OS, compilatore, git)
 collect_system_info() {
@@ -340,9 +343,13 @@ collect_system_info() {
 
 collect_system_info
 
-# Inizializzazione del CSV dei dati grezzi
+# Inizializzazione del CSV dei dati grezzi di timing
 TIMINGS_RAW_CSV="${OUTPUT_DIR}/timings_raw.csv"
 echo "timestamp,variant,mode,workers,repetition,phase,samples,mean_ms,median_ms,wall_time_sec" > "$TIMINGS_RAW_CSV"
+
+# Inizializzazione del CSV delle metriche di stabilità (RMSE & Spread)
+STABILITY_RAW_CSV="${OUTPUT_DIR}/stability_rmse.csv"
+echo "timestamp,variant,mode,workers,repetition,rmse_ptv,rmse_rectum,rmse_bladder,rmse_total_fitness,rmse_genes,spread_seq,spread_par" > "$STABILITY_RAW_CSV"
 
 # Funzione per parsare le righe TIMING dall'output del processo
 # TIMING variant=omp mode=openmp phase=population_evaluation samples=49 mean_ms=8130.47 median_ms=8308
@@ -380,6 +387,11 @@ run_benchmark() {
     local log_name="${variant}_${mode}_w${workers}_rep${rep}.log"
     local log_path="${RAW_LOGS_DIR}/${log_name}"
 
+    local pop_file="${POPULATIONS_DIR}/${variant}_${mode}_w${workers}_rep${rep}.csv"
+    if [[ "$variant" == "seq" ]]; then
+        pop_file="${POPULATIONS_DIR}/seq_rep${rep}.csv"
+    fi
+
     echo -ne "[${current_idx}/${TOTAL_TESTS}] ${BOLD}${variant}${NC} (mode=${mode}, workers=${workers}, rep=${rep}/${REPETITIONS})... "
 
     local cmd=()
@@ -406,6 +418,7 @@ run_benchmark() {
     # L'esecuzione DEVE avvenire nella root fmo per risolvere "../data/prostate"
     (
         cd "$FMO_DIR"
+        export FMO_POPULATION_OUT="$pop_file"
         if [[ "$variant" == "omp" ]]; then
             export OMP_NUM_THREADS="$workers"
         fi
@@ -428,15 +441,56 @@ run_benchmark() {
     elapsed_sec=$(awk -v ns="$elapsed_ns" 'BEGIN { printf "%.3f", ns / 1000000000 }')
 
     if [[ $exit_code -eq 0 ]]; then
+        parse_timings "$log_path" "$variant" "$mode" "$workers" "$rep" "$elapsed_sec"
+
         # Estrai tempo nsga2_total dal log se presente
         local total_ms
         total_ms=$(grep -E "^TIMING .* phase=nsga2_total " "$log_path" | awk '{ for(i=1;i<=NF;i++) if($i ~ /^mean_ms=/) { split($i,a,"="); print a[2] } }' || true)
-        if [[ -n "$total_ms" ]]; then
-            echo -e "${GREEN}OK${NC} (${elapsed_sec}s wall, nsga2_total=${total_ms}ms)"
+
+        local ts
+        ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+        if [[ "$variant" == "seq" ]]; then
+            local spread_val
+            spread_val=$(grep -E "^QUALITY variant=seq " "$log_path" | awk -F'spread_metric=' '{print $2}' | tr -d ' \r\n' || echo "")
+            if [[ -z "$spread_val" ]]; then spread_val="0.0"; fi
+            echo "${ts},seq,sequential,1,${rep},0.00000000,0.00000000,0.00000000,0.00000000,0.00000000,${spread_val},${spread_val}" >> "$STABILITY_RAW_CSV"
+
+            if [[ -n "$total_ms" ]]; then
+                echo -e "${GREEN}OK${NC} (${elapsed_sec}s wall, nsga2_total=${total_ms}ms, spread=${spread_val})"
+            else
+                echo -e "${GREEN}OK${NC} (${elapsed_sec}s wall, spread=${spread_val})"
+            fi
         else
-            echo -e "${GREEN}OK${NC} (${elapsed_sec}s wall)"
+            # Calcolo RMSE vs baseline sequenziale
+            local ref_seq="${POPULATIONS_DIR}/seq_rep${rep}.csv"
+            if [[ ! -f "$ref_seq" ]]; then ref_seq="${POPULATIONS_DIR}/seq_rep1.csv"; fi
+            if [[ ! -f "$ref_seq" && -f "${POPULATIONS_DIR}/seq_baseline.csv" ]]; then ref_seq="${POPULATIONS_DIR}/seq_baseline.csv"; fi
+
+            local rmse_info=""
+            if [[ -f "$ref_seq" && -f "$pop_file" ]]; then
+                local rmse_line
+                rmse_line=$("${BUILD_DIR}/compute-rmse" "$ref_seq" "$pop_file" "$variant" "$mode" "$workers" "$rep" 2>/dev/null || true)
+                if [[ "$rmse_line" =~ ^RMSE ]]; then
+                    local r_ptv=$(echo "$rmse_line" | awk '{for(i=1;i<=NF;i++) if($i ~ /^rmse_ptv=/) {split($i,a,"="); print a[2]}}')
+                    local r_rec=$(echo "$rmse_line" | awk '{for(i=1;i<=NF;i++) if($i ~ /^rmse_rectum=/) {split($i,a,"="); print a[2]}}')
+                    local r_bla=$(echo "$rmse_line" | awk '{for(i=1;i<=NF;i++) if($i ~ /^rmse_bladder=/) {split($i,a,"="); print a[2]}}')
+                    local r_fit=$(echo "$rmse_line" | awk '{for(i=1;i<=NF;i++) if($i ~ /^rmse_total_fitness=/) {split($i,a,"="); print a[2]}}')
+                    local r_gen=$(echo "$rmse_line" | awk '{for(i=1;i<=NF;i++) if($i ~ /^rmse_genes=/) {split($i,a,"="); print a[2]}}')
+                    local s_seq=$(echo "$rmse_line" | awk '{for(i=1;i<=NF;i++) if($i ~ /^spread_seq=/) {split($i,a,"="); print a[2]}}')
+                    local s_par=$(echo "$rmse_line" | awk '{for(i=1;i<=NF;i++) if($i ~ /^spread_par=/) {split($i,a,"="); print a[2]}}')
+                    echo "${ts},${variant},${mode},${workers},${rep},${r_ptv},${r_rec},${r_bla},${r_fit},${r_gen},${s_seq},${s_par}" >> "$STABILITY_RAW_CSV"
+                    echo "$rmse_line" >> "$log_path"
+                    rmse_info=", RMSE_fit=${r_fit}, RMSE_genes=${r_gen}"
+                fi
+            fi
+
+            if [[ -n "$total_ms" ]]; then
+                echo -e "${GREEN}OK${NC} (${elapsed_sec}s wall, nsga2_total=${total_ms}ms${rmse_info})"
+            else
+                echo -e "${GREEN}OK${NC} (${elapsed_sec}s wall${rmse_info})"
+            fi
         fi
-        parse_timings "$log_path" "$variant" "$mode" "$workers" "$rep" "$elapsed_sec"
     elif [[ $exit_code -eq 124 ]]; then
         echo -e "${RED}TIMEOUT (${TIMEOUT_SEC}s superati)${NC}"
     else
@@ -454,10 +508,13 @@ generate_summary() {
 import csv
 import sys
 import math
+import os
 from collections import defaultdict
 
 raw_csv_path = "$TIMINGS_RAW_CSV"
 summary_csv_path = "$summary_file"
+stability_raw_path = "$STABILITY_RAW_CSV"
+output_dir = "$OUTPUT_DIR"
 
 try:
     with open(raw_csv_path, 'r', newline='') as f:
@@ -521,11 +578,90 @@ for (variant, mode, workers, phase), data in stats.items():
     if workers == 1:
         t1_baselines[(variant, mode, phase)] = data['avg_mean_ms']
 
+# Elaborazione metriche di stabilità (RMSE & Spread)
+stab_rows = []
+if os.path.exists(stability_raw_path):
+    try:
+        with open(stability_raw_path, 'r', newline='') as f:
+            stab_rows = list(csv.DictReader(f))
+    except Exception as e:
+        print(f"Avviso: impossibile leggere stability_rmse.csv: {e}")
+
+stab_groups = defaultdict(list)
+for r in stab_rows:
+    try:
+        w_val = int(r['workers'])
+        stab_groups[(r['variant'], r['mode'], w_val)].append({
+            'rmse_ptv': float(r['rmse_ptv']),
+            'rmse_rectum': float(r['rmse_rectum']),
+            'rmse_bladder': float(r['rmse_bladder']),
+            'rmse_total_fitness': float(r['rmse_total_fitness']),
+            'rmse_genes': float(r['rmse_genes']),
+            'spread_seq': float(r['spread_seq']),
+            'spread_par': float(r['spread_par'])
+        })
+    except (ValueError, KeyError):
+        continue
+
+stab_stats = {}
+for key, items in stab_groups.items():
+    cnt = len(items)
+    avg_ptv = sum(x['rmse_ptv'] for x in items) / cnt
+    avg_rec = sum(x['rmse_rectum'] for x in items) / cnt
+    avg_bla = sum(x['rmse_bladder'] for x in items) / cnt
+    avg_fit = sum(x['rmse_total_fitness'] for x in items) / cnt
+    avg_gen = sum(x['rmse_genes'] for x in items) / cnt
+    avg_spread = sum(x['spread_par'] for x in items) / cnt
+
+    if key[0] == 'seq':
+        status = "BASELINE"
+    elif avg_fit == 0.0 and avg_gen == 0.0:
+        status = "DETERMINISTICO (0 err)"
+    elif avg_fit < 1e-6:
+        status = "QUASI-IDENTICO"
+    else:
+        status = "STABILE (Dev. GA)"
+
+    stab_stats[key] = {
+        'count': cnt,
+        'avg_ptv': avg_ptv,
+        'avg_rec': avg_rec,
+        'avg_bla': avg_bla,
+        'avg_fit': avg_fit,
+        'avg_gen': avg_gen,
+        'avg_spread': avg_spread,
+        'status': status
+    }
+
+# Scrittura stability_summary.csv
+if stab_stats:
+    stab_summary_path = os.path.join(output_dir, "stability_summary.csv")
+    with open(stab_summary_path, 'w', newline='') as f:
+        fn = ['variant', 'mode', 'workers', 'repetitions', 'avg_rmse_ptv', 'avg_rmse_rectum', 'avg_rmse_bladder', 'avg_rmse_fitness', 'avg_rmse_genes', 'avg_spread', 'status']
+        w = csv.DictWriter(f, fieldnames=fn)
+        w.writeheader()
+        for key in sorted(stab_stats.keys(), key=lambda k: (k[0], k[1], k[2])):
+            d = stab_stats[key]
+            w.writerow({
+                'variant': key[0],
+                'mode': key[1],
+                'workers': key[2],
+                'repetitions': d['count'],
+                'avg_rmse_ptv': f"{d['avg_ptv']:.6f}",
+                'avg_rmse_rectum': f"{d['avg_rec']:.6f}",
+                'avg_rmse_bladder': f"{d['avg_bla']:.6f}",
+                'avg_rmse_fitness': f"{d['avg_fit']:.6f}",
+                'avg_rmse_genes': f"{d['avg_gen']:.6f}",
+                'avg_spread': f"{d['avg_spread']:.6f}",
+                'status': d['status']
+            })
+
 # Scrittura di summary.csv
 fieldnames = [
     'variant', 'mode', 'workers', 'phase', 'repetitions',
     'avg_mean_ms', 'std_mean_ms', 'avg_median_ms', 'min_ms', 'max_ms',
-    'speedup_seq', 'speedup_t1', 'efficiency_seq', 'efficiency_t1'
+    'speedup_seq', 'speedup_t1', 'efficiency_seq', 'efficiency_t1',
+    'rmse_fitness', 'rmse_genes'
 ]
 
 with open(summary_csv_path, 'w', newline='') as f:
@@ -561,6 +697,10 @@ with open(summary_csv_path, 'w', newline='') as f:
             s_t1_str = ""
             eff_t1_str = ""
 
+        s_info = stab_stats.get((variant, mode, workers))
+        rmse_fit_str = f"{s_info['avg_fit']:.6f}" if s_info else ""
+        rmse_gen_str = f"{s_info['avg_gen']:.6f}" if s_info else ""
+
         writer.writerow({
             'variant': variant,
             'mode': mode,
@@ -575,7 +715,9 @@ with open(summary_csv_path, 'w', newline='') as f:
             'speedup_seq': s_seq_str,
             'speedup_t1': s_t1_str,
             'efficiency_seq': eff_seq_str,
-            'efficiency_t1': eff_t1_str
+            'efficiency_t1': eff_t1_str,
+            'rmse_fitness': rmse_fit_str,
+            'rmse_genes': rmse_gen_str
         })
 
 print(f"File di riepilogo generato con successo: {summary_csv_path}")
@@ -600,8 +742,40 @@ for key in sorted_keys:
     print(f"{variant:<12} {mode:<12} {workers:<9} {tp:<14.1f} {s_seq:<14} {s_t1:<14} {eff:<12}")
 
 print("=" * 90)
+
+# Stampa tabella riassuntiva stabilità e determinismo delle soluzioni
+if stab_stats:
+    print("\n" + "=" * 105)
+    print(f"  STABILITÀ DELLE SOLUZIONI (RMSE vs Baseline Sequenziale) & DETERMINISMO")
+    print("=" * 105)
+    print(f"{'VARIANTE':<10} {'MODE':<10} {'WORKERS':<9} {'RMSE_FITNESS':<14} {'RMSE_GENI':<14} {'SPREAD_PAR':<12} {'STATO DETERMINISMO':<28}")
+    print("-" * 105)
+    for key in sorted(stab_stats.keys(), key=lambda k: (k[0], k[1], k[2])):
+        d = stab_stats[key]
+        print(f"{key[0]:<10} {key[1]:<10} {key[2]:<9} {d['avg_fit']:<14.6f} {d['avg_gen']:<14.6f} {d['avg_spread']:<12.4f} {d['status']:<28}")
+    print("=" * 105)
+
 PY_EOF
 }
+
+# Se la variante sequenziale non è inclusa nelle varianti selezionate,
+# esegui una baseline preliminare per abilitare il calcolo di RMSE
+HAS_SEQ=false
+for v in "${UNIQUE_VARIANTS[@]}"; do
+    if [[ "$v" == "seq" ]]; then HAS_SEQ=true; break; fi
+done
+
+if [[ "$HAS_SEQ" == false && "$DRY_RUN" == false ]]; then
+    echo -e "${YELLOW}${BOLD}Nota: 'seq' non inclusa in -v. Esecuzione baseline sequenziale per calcolo RMSE...${NC}"
+    (
+        cd "$FMO_DIR"
+        export FMO_POPULATION_OUT="${POPULATIONS_DIR}/seq_baseline.csv"
+        ./build/nsga2-seq > "${RAW_LOGS_DIR}/seq_baseline.log" 2>&1
+    )
+    if [[ -f "${POPULATIONS_DIR}/seq_baseline.csv" ]]; then
+        echo -e "${GREEN}✓ Baseline sequenziale salvata in: ${POPULATIONS_DIR}/seq_baseline.csv${NC}\n"
+    fi
+fi
 
 # Esecuzione del loop principale
 current_test=1
@@ -652,10 +826,13 @@ echo -e "${GREEN}${BOLD}                BENCHMARK COMPLETATO CON SUCCESSO!      
 echo -e "${GREEN}${BOLD}======================================================================${NC}"
 echo -e "Tutti i risultati sono stati salvati in:"
 echo -e "  ${BOLD}${OUTPUT_DIR}${NC}"
-echo -e "  ├── ${BOLD}timings_raw.csv${NC}   (Tutti i campioni misurati per fase)"
-echo -e "  ├── ${BOLD}summary.csv${NC}       (Riepilogo statistiche, speedup ed efficienza)"
-echo -e "  ├── ${BOLD}system_info.txt${NC}   (Metadati CPU, NUMA, OS, toolchain)"
-echo -e "  └── ${BOLD}raw_logs/${NC}         (File di log completi per ogni singola esecuzione)"
+echo -e "  ├── ${BOLD}timings_raw.csv${NC}       (Tutti i campioni di timing misurati per fase)"
+echo -e "  ├── ${BOLD}summary.csv${NC}           (Riepilogo statistiche, speedup ed efficienza)"
+echo -e "  ├── ${BOLD}stability_rmse.csv${NC}    (Campioni di RMSE e Spread vs baseline)"
+echo -e "  ├── ${BOLD}stability_summary.csv${NC} (Riepilogo discrepanze e determinismo)"
+echo -e "  ├── ${BOLD}system_info.txt${NC}       (Metadati CPU, NUMA, OS, toolchain)"
+echo -e "  ├── ${BOLD}populations/${NC}          (Popolazioni finali esportate in CSV)"
+echo -e "  └── ${BOLD}raw_logs/${NC}             (File di log completi per ogni singola esecuzione)"
 echo ""
 echo -e "Per visualizzare o rigenerare i grafici in qualsiasi momento:"
 echo -e "  ${CYAN}python3 scripts/plot_benchmark.py ${OUTPUT_DIR}${NC}"

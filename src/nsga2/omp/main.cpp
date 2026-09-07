@@ -20,7 +20,8 @@
 #include <cstdlib>
 #include <iostream>
 #include <map>
-#include <nsga-utils.hpp>
+#include "fmo/nsga2/nsga-utils.hpp"
+#include "fmo/metrics/metrics.hpp"
 #include <numeric>
 #include <string>
 #include <vector>
@@ -124,7 +125,7 @@ void nsga2Omp(Population &pop, int num_generations, int population_size,
 
 int main(int argc, char *argv[]) {
 
-  if (argc != 2) {
+  if (argc < 2) {
     std::cout << "Inserisci il numero degli workers" << std::endl;
     exit(1);
   }
@@ -135,8 +136,24 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
-  constexpr int population_size = 100;
-  constexpr int num_generations = 50;
+  int population_size = 100;
+  if (const char *env_p = std::getenv("FMO_POPULATION_SIZE")) {
+    int p = std::atoi(env_p);
+    if (p > 0) population_size = p;
+  }
+  int num_generations = 50;
+  if (const char *env_g = std::getenv("FMO_GENERATIONS")) {
+    int g = std::atoi(env_g);
+    if (g > 0) num_generations = g;
+  }
+
+  std::string pop_out_path;
+  if (argc > 2) {
+    pop_out_path = argv[2];
+  } else if (const char *env_o = std::getenv("FMO_POPULATION_OUT")) {
+    pop_out_path = env_o;
+  }
+
   std::map<std::string, std::vector<long>> samples;
 
   std::cout << "RUN variant=omp mode=openmp workers=" << nw
@@ -177,6 +194,12 @@ int main(int argc, char *argv[]) {
   double spread = computeSpreadMetric(start);
   std::cout << "QUALITY variant=omp mode=openmp spread_metric=" << spread
             << std::endl;
+
+  if (!pop_out_path.empty()) {
+    savePopulation(start, pop_out_path);
+    std::cout << "SAVED_POPULATION variant=omp mode=openmp path="
+              << pop_out_path << std::endl;
+  }
 
   for (const auto &[phase, values] : samples) {
     std::vector<long> filtered(values.begin(), values.end());

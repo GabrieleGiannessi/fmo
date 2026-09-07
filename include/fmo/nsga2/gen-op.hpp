@@ -156,6 +156,7 @@ public:
         gene = std::max(min_val, std::min(gene, max_val));
       }
     }
+    clip(individual, min_val, max_val);
   }
 
   /**

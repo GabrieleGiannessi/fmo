@@ -74,42 +74,106 @@ def load_data(target_path):
             reader = csv.DictReader(f)
             raw_rows = list(reader)
 
-    return summary_rows, raw_rows, results_dir
+    stab_summary_csv = os.path.join(results_dir, "stability_summary.csv")
+    stab_raw_csv = os.path.join(results_dir, "stability_rmse.csv")
+
+    stab_rows = []
+    if os.path.exists(stab_summary_csv):
+        try:
+            with open(stab_summary_csv, 'r', newline='') as f:
+                stab_rows = list(csv.DictReader(f))
+        except Exception:
+            pass
+    elif os.path.exists(stab_raw_csv):
+        try:
+            with open(stab_raw_csv, 'r', newline='') as f:
+                reader = csv.DictReader(f)
+                groups = defaultdict(list)
+                for r in reader:
+                    w_val = int(r['workers'])
+                    groups[(r['variant'], r['mode'], w_val)].append({
+                        'rmse_ptv': float(r['rmse_ptv']),
+                        'rmse_rectum': float(r['rmse_rectum']),
+                        'rmse_bladder': float(r['rmse_bladder']),
+                        'rmse_total_fitness': float(r['rmse_total_fitness']),
+                        'rmse_genes': float(r['rmse_genes']),
+                        'spread_par': float(r['spread_par']),
+                    })
+                for (v, m, w_val), items in sorted(groups.items()):
+                    c = len(items)
+                    avg_fit = sum(x['rmse_total_fitness'] for x in items) / c
+                    avg_gen = sum(x['rmse_genes'] for x in items) / c
+                    avg_ptv = sum(x['rmse_ptv'] for x in items) / c
+                    avg_rec = sum(x['rmse_rectum'] for x in items) / c
+                    avg_bla = sum(x['rmse_bladder'] for x in items) / c
+                    avg_spread = sum(x['spread_par'] for x in items) / c
+                    status = "BASELINE" if v == 'seq' else ("DETERMINISTICO (0 err)" if avg_fit == 0.0 and avg_gen == 0.0 else "STABILE (Dev. GA)")
+                    stab_rows.append({
+                        'variant': v,
+                        'mode': m,
+                        'workers': str(w_val),
+                        'repetitions': str(c),
+                        'avg_rmse_ptv': f"{avg_ptv:.6f}",
+                        'avg_rmse_rectum': f"{avg_rec:.6f}",
+                        'avg_rmse_bladder': f"{avg_bla:.6f}",
+                        'avg_rmse_fitness': f"{avg_fit:.6f}",
+                        'avg_rmse_genes': f"{avg_gen:.6f}",
+                        'avg_spread': f"{avg_spread:.6f}",
+                        'status': status
+                    })
+        except Exception:
+            pass
+
+    return summary_rows, raw_rows, stab_rows, results_dir
 
 
-def print_terminal_summary(summary_rows):
-    if not summary_rows:
+def print_terminal_summary(summary_rows, stab_rows=None):
+    if not summary_rows and not stab_rows:
         print("Nessun dato di riepilogo disponibile.")
         return
 
-    phases = sorted(list({r['phase'] for r in summary_rows}))
-    target_phase = 'nsga2_total' if 'nsga2_total' in phases else phases[0]
+    if summary_rows:
+        phases = sorted(list({r['phase'] for r in summary_rows}))
+        target_phase = 'nsga2_total' if 'nsga2_total' in phases else phases[0]
 
-    print("\n" + "=" * 105)
-    print(f"  RIEPILOGO PRESTAZIONI (Fase: {target_phase})")
-    print("=" * 105)
-    print(f"{'VARIANTE':<14} {'MODALITÀ':<14} {'WORKERS':<9} {'TEMPO MEDIO (s)':<18} {'SPEEDUP (seq)':<16} {'SPEEDUP (T1)':<16} {'EFFICIENZA':<14}")
-    print("-" * 105)
+        print("\n" + "=" * 105)
+        print(f"  RIEPILOGO PRESTAZIONI (Fase: {target_phase})")
+        print("=" * 105)
+        print(f"{'VARIANTE':<14} {'MODALITÀ':<14} {'WORKERS':<9} {'TEMPO MEDIO (s)':<18} {'SPEEDUP (seq)':<16} {'SPEEDUP (T1)':<16} {'EFFICIENZA':<14}")
+        print("-" * 105)
 
-    def sort_key(r):
-        return (r['variant'], r['mode'], int(r['workers']))
+        def sort_key(r):
+            return (r['variant'], r['mode'], int(r['workers']))
 
-    phase_rows = [r for r in summary_rows if r['phase'] == target_phase]
-    phase_rows.sort(key=sort_key)
+        phase_rows = [r for r in summary_rows if r['phase'] == target_phase]
+        phase_rows.sort(key=sort_key)
 
-    for r in phase_rows:
-        variant = r['variant']
-        mode = r['mode']
-        workers = r['workers']
-        mean_s = float(r['avg_mean_ms']) / 1000.0
+        for r in phase_rows:
+            variant = r['variant']
+            mode = r['mode']
+            workers = r['workers']
+            mean_s = float(r['avg_mean_ms']) / 1000.0
 
-        s_seq = f"{float(r['speedup_seq']):.2f}x" if r.get('speedup_seq') else "-"
-        s_t1 = f"{float(r['speedup_t1']):.2f}x" if r.get('speedup_t1') else "-"
-        eff = f"{float(r['efficiency_t1']) * 100:.1f}%" if r.get('efficiency_t1') else "-"
+            s_seq = f"{float(r['speedup_seq']):.2f}x" if r.get('speedup_seq') else "-"
+            s_t1 = f"{float(r['speedup_t1']):.2f}x" if r.get('speedup_t1') else "-"
+            eff = f"{float(r['efficiency_t1']) * 100:.1f}%" if r.get('efficiency_t1') else "-"
 
-        print(f"{variant:<14} {mode:<14} {workers:<9} {mean_s:<18.3f} {s_seq:<16} {s_t1:<16} {eff:<14}")
+            print(f"{variant:<14} {mode:<14} {workers:<9} {mean_s:<18.3f} {s_seq:<16} {s_t1:<16} {eff:<14}")
 
-    print("=" * 105 + "\n")
+        print("=" * 105 + "\n")
+
+    if stab_rows:
+        print("=" * 110)
+        print("  STABILITÀ DELLE SOLUZIONI (RMSE vs Baseline Sequenziale) & DETERMINISMO")
+        print("=" * 110)
+        print(f"{'VARIANTE':<10} {'MODE':<10} {'WORKERS':<9} {'RMSE_FITNESS':<14} {'RMSE_GENI':<14} {'SPREAD_PAR':<12} {'STATO DETERMINISMO':<30}")
+        print("-" * 110)
+        for r in stab_rows:
+            fit_val = float(r.get('avg_rmse_fitness', 0.0))
+            gen_val = float(r.get('avg_rmse_genes', 0.0))
+            spread_val = float(r.get('avg_spread', 0.0))
+            print(f"{r['variant']:<10} {r['mode']:<10} {r['workers']:<9} {fit_val:<14.6f} {gen_val:<14.6f} {spread_val:<12.4f} {r.get('status', '-'):<30}")
+        print("=" * 110 + "\n")
 
 
 def generate_svg_chart(title, x_label, y_label, series_data, out_path, is_speedup=False, is_efficiency=False):
@@ -228,9 +292,9 @@ def generate_svg_chart(title, x_label, y_label, series_data, out_path, is_speedu
     print(f"Grafico SVG salvato: {out_path}")
 
 
-def generate_all_svg_charts(summary_rows, results_dir):
+def generate_all_svg_charts(summary_rows, results_dir, stab_rows=None):
     """
-    Genera i 3 grafici SVG standalone per la fase principale.
+    Genera i grafici SVG standalone per la fase principale e per la stabilità.
     """
     phases = sorted(list({r['phase'] for r in summary_rows}))
     target_phase = 'nsga2_total' if 'nsga2_total' in phases else phases[0]
@@ -280,8 +344,28 @@ def generate_all_svg_charts(summary_rows, results_dir):
         is_speedup=False
     )
 
+    if stab_rows:
+        stab_series = defaultdict(list)
+        for r in stab_rows:
+            if r['variant'] == 'seq':
+                continue
+            label = f"{r['variant']} ({r['mode']})"
+            w = int(r['workers'])
+            fit_rmse = float(r.get('avg_rmse_fitness', 0.0))
+            stab_series[label].append((w, fit_rmse))
 
-def generate_html_report(summary_rows, raw_rows, results_dir):
+        if stab_series:
+            generate_svg_chart(
+                "Stabilità delle Soluzioni: RMSE Fitness vs Cores",
+                "Numero di Cores / Workers",
+                "RMSE Fitness (vs Baseline)",
+                stab_series,
+                os.path.join(results_dir, "solution_stability.svg"),
+                is_speedup=False
+            )
+
+
+def generate_html_report(summary_rows, raw_rows, results_dir, stab_rows=None):
     """
     Genera un report HTML completo e interattivo con grafici Chart.js (online)
     e link diretti agli SVG vettoriali (offline).
@@ -324,13 +408,80 @@ def generate_html_report(summary_rows, raw_rows, results_dir):
                 'efficiency_t1': [w_dict[w]['efficiency_t1'] for w in sorted_w]
             }
 
+    stab_card_html = ""
+    stab_link_html = ""
+    if stab_rows:
+        stab_link_html = """
+            <a href="solution_stability.svg" target="_blank">🎯 solution_stability.svg</a>
+            <a href="stability_summary.csv" download>📄 stability_summary.csv</a>
+            <a href="stability_rmse.csv" download>📄 stability_rmse.csv</a>
+        """
+        rows_html = []
+        for r in stab_rows:
+            st = r.get('status', '')
+            if 'DETERMINISTICO' in st:
+                badge = f'<span class="badge" style="background: rgba(63, 185, 80, 0.2); color: #3fb950;">{st}</span>'
+            elif 'BASELINE' in st:
+                badge = f'<span class="badge" style="background: rgba(88, 166, 255, 0.2); color: #58a6ff;">{st}</span>'
+            else:
+                badge = f'<span class="badge" style="background: rgba(210, 153, 34, 0.2); color: #d29922;">{st}</span>'
+
+            rows_html.append(f"""
+                <tr>
+                    <td><strong>{r.get('variant', '')}</strong></td>
+                    <td>{r.get('mode', '')}</td>
+                    <td>{r.get('workers', '1')}</td>
+                    <td>{r.get('repetitions', '1')}</td>
+                    <td><code>{r.get('avg_rmse_fitness', '-')}</code></td>
+                    <td><code>{r.get('avg_rmse_genes', '-')}</code></td>
+                    <td><code>{r.get('avg_rmse_ptv', '-')}</code></td>
+                    <td><code>{r.get('avg_rmse_rectum', '-')}</code></td>
+                    <td><code>{r.get('avg_rmse_bladder', '-')}</code></td>
+                    <td><code>{r.get('avg_spread', '-')}</code></td>
+                    <td>{badge}</td>
+                </tr>
+            """)
+        stab_card_html = f"""
+        <div class="card" style="margin-bottom: 32px;">
+            <h2>🎯 Stabilità delle Soluzioni & Determinismo (RMSE vs Baseline Sequenziale)</h2>
+            <p style="color: var(--text-muted); font-size: 14px; margin-top: 4px; margin-bottom: 16px;">
+                Misurazione della discrepanza tra la popolazione prodotta dalla baseline sequenziale e quella parallela
+                tramite <code>computePopulationRMSE</code> e <code>computeSpreadMetric</code>.
+                Un valore di RMSE pari a 0 attesta il perfetto determinismo e l'assenza di race condition.
+            </p>
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Variante</th>
+                            <th>Modo</th>
+                            <th>Workers</th>
+                            <th>Rip.</th>
+                            <th>RMSE Total Fitness</th>
+                            <th>RMSE Geni</th>
+                            <th>RMSE PTV</th>
+                            <th>RMSE Retto</th>
+                            <th>RMSE Vescica</th>
+                            <th>Spread Δ</th>
+                            <th>Stato Determinismo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {''.join(rows_html)}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        """
+
     html_content = f"""<!DOCTYPE html>
 <html lang="it">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FMO NSGA-II Benchmark & Scalability Report</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>FMO NSGA-II HPC Benchmark Report</title>
+    <!-- Chart.js (CDN opzionale per grafici dinamici interattivi) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <style>
         :root {{
             --bg-color: #0d1117;
@@ -455,15 +606,16 @@ def generate_html_report(summary_rows, raw_rows, results_dir):
         <header>
             <h1>⚡ FMO NSGA-II Scalability & Benchmark Report</h1>
             <p style="color: var(--text-muted); margin: 0;">
-                Analisi di Speedup, Efficienza Parallela e Scalabilità (fino a 256 core).
+                Analisi di Speedup, Efficienza Parallela, Scalabilità e Stabilità delle Soluzioni.
             </p>
         </header>
 
         <div class="links-bar">
-            <strong>Grafici vettoriali standalone (SVG offline):</strong>
+            <strong>Grafici e Dati:</strong>
             <a href="speedup.svg" target="_blank">📈 speedup.svg</a>
             <a href="efficiency.svg" target="_blank">⚡ efficiency.svg</a>
             <a href="execution_time.svg" target="_blank">⏱️ execution_time.svg</a>
+            {stab_link_html}
             <a href="summary.csv" download>📄 summary.csv</a>
             <a href="timings_raw.csv" download>📄 timings_raw.csv</a>
         </div>
@@ -509,6 +661,8 @@ def generate_html_report(summary_rows, raw_rows, results_dir):
                 </div>
             </div>
         </div>
+
+        {stab_card_html}
 
         <div class="card" style="margin-bottom: 32px;">
             <h2>🖥️ Metadati Hardware & Ambiente di Esecuzione</h2>
@@ -787,11 +941,11 @@ def main():
         sys.exit(1)
 
     print(f"Caricamento dati da: {target}")
-    summary_rows, raw_rows, results_dir = load_data(target)
+    summary_rows, raw_rows, stab_rows, results_dir = load_data(target)
 
-    print_terminal_summary(summary_rows)
-    generate_all_svg_charts(summary_rows, results_dir)
-    generate_html_report(summary_rows, raw_rows, results_dir)
+    print_terminal_summary(summary_rows, stab_rows)
+    generate_all_svg_charts(summary_rows, results_dir, stab_rows)
+    generate_html_report(summary_rows, raw_rows, results_dir, stab_rows)
     generate_matplotlib_figures(summary_rows, results_dir)
 
 

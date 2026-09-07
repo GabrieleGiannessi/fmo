@@ -121,7 +121,10 @@ add_executable(nsga2-ff
     include/fmo/utilities/utimer.cpp
 )
 
-set(FMO_TARGETS fmo test-core test-nsga2 nsga2-seq nsga2-omp nsga2-ff)
+add_executable(compute-rmse tests/compute-rmse.cpp)
+add_executable(test-metrics tests/test-metrics.cpp)
+
+set(FMO_TARGETS fmo test-core test-nsga2 test-metrics compute-rmse nsga2-seq nsga2-omp nsga2-ff)
 foreach(target IN LISTS FMO_TARGETS)
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 endforeach()
@@ -150,3 +153,4 @@ target_link_libraries(nsga2-ff PRIVATE
 
 add_test(NAME test-core COMMAND test-core)
 add_test(NAME test-nsga2 COMMAND test-nsga2)
+add_test(NAME test-metrics COMMAND test-metrics)
