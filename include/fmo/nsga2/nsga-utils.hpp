@@ -6,17 +6,18 @@
  * funzioni per l'implementazione di:
  * - Fast non-dominated sorting (O(MN^2));
  * - assegnamento della crowded distance agli individui della popolazione;
- * - troncamento degli individui di una popolazione; 
+ * - troncamento degli individui di una popolazione;
  * - confronto di non dominanza tra due individui.
  */
 #pragma once
 
 #include "fmo/core/fitness.hpp"
 #include "fmo/core/population.hpp"
+#include "fmo/nsga2/gen-op.hpp"
 
 #include <algorithm>
-#include <vector>
 #include <limits>
+#include <vector>
 
 struct SortNode {
   int n_p =
@@ -36,18 +37,18 @@ struct SortNode {
 inline bool dominates(const Fitness &a, const Fitness &b) {
   // 1. Condizione di "non peggiore": se 'a' è peggiore di 'b' in anche solo
   // uno, NON può dominare b
-  if (a.value_target_ptv > b.value_target_ptv)
+  if (a.getPTVFitness() > b.getPTVFitness())
     return false; // PTV peggiore (maggiore)
-  if (a.value_oar_rectal > b.value_oar_rectal)
+  if (a.getRectalFitness() > b.getRectalFitness())
     return false; // Retto peggiore (maggiore)
-  if (a.value_oar_bladder > b.value_oar_bladder)
+  if (a.getBladderFitness() > b.getBladderFitness())
     return false; // Vescica peggiore (maggiore)
 
   // 2. Condizione di "strettamente migliore": 'a' deve superare 'b' in almeno
   // un obiettivo
-  bool at_least_one_better = (a.value_target_ptv < b.value_target_ptv) ||
-                             (a.value_oar_rectal < b.value_oar_rectal) ||
-                             (a.value_oar_bladder < b.value_oar_bladder);
+  bool at_least_one_better = (a.getPTVFitness() < b.getPTVFitness()) ||
+                             (a.getRectalFitness() < b.getRectalFitness()) ||
+                             (a.getBladderFitness() < b.getBladderFitness());
 
   return at_least_one_better;
 }
@@ -180,10 +181,10 @@ inline void assignCrowdingDistance(const std::vector<int> &front,
     // m = 0 (PTV), m = 1 (Rectum), m=2 (Bladder)
     auto get_obj = [m](const Fitness &f) -> double {
       if (m == 0)
-        return f.value_target_ptv;
+        return f.getPTVFitness();
       if (m == 1)
-        return f.value_oar_rectal;
-      return f.value_oar_bladder;
+        return f.getRectalFitness();
+      return f.getBladderFitness();
     };
 
     std::sort(sorted_indices.begin(), sorted_indices.end(), [&](int a, int b) {
@@ -245,8 +246,9 @@ truncatePopulation(Population &combined_pop,
       std::vector<int> sorted_last_front = front;
       std::sort(sorted_last_front.begin(), sorted_last_front.end(),
                 [&](int a, int b) {
-                  return combined_pop.getIndividual(a).getCrowdingDistance() >
-                         combined_pop.getIndividual(b).getCrowdingDistance();
+                  return GeneticOperator::crowded_compare(
+                      combined_pop.getIndividual(a),
+                      combined_pop.getIndividual(b));
                 });
 
       size_t needed = target_size - next_gen.size();
