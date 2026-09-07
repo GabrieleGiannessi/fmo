@@ -20,6 +20,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <map>
+#include <nsga-utils.hpp>
 #include <numeric>
 #include <string>
 #include <vector>
@@ -70,13 +71,11 @@ void nsga2ff(Population &pop, int num_generations, int population_size,
   };
 
   if (mod == 0) {
-    measure("initial_evaluation", [&] {
-      evaluatePopulationFFParFor(pop, evaluator, nw);
-    });
+    measure("initial_evaluation",
+            [&] { evaluatePopulationFFParFor(pop, evaluator, nw); });
   } else {
-    measure("initial_evaluation", [&] {
-      evaluatePopulationFFFarm(pop, evaluator, nw);
-    });
+    measure("initial_evaluation",
+            [&] { evaluatePopulationFFFarm(pop, evaluator, nw); });
   }
 
   // Classificazione iniziale di P_0
@@ -84,9 +83,7 @@ void nsga2ff(Population &pop, int num_generations, int population_size,
   measure("initial_sorting", [&] { fronts = sortPopulation(pop); });
 
   // assegnazione distance crowding iniziale alla P_0
-  measure("initial_crowding", [&] {
-    assignPopulationCrowding(pop, fronts);
-  });
+  measure("initial_crowding", [&] { assignPopulationCrowding(pop, fronts); });
 
   // 2. Loop Generazionale
   for (int gen = 0; gen < num_generations; ++gen) {
@@ -94,7 +91,8 @@ void nsga2ff(Population &pop, int num_generations, int population_size,
     {
       utimer generation_timer("generation_total", &generation_ms, true);
 
-      // A. Generazione discendenza Q_t (taglia N) tramite Torneo, SBX e Mutazione
+      // A. Generazione discendenza Q_t (taglia N) tramite Torneo, SBX e
+      // Mutazione
       Population offspring;
       measure("offspring_generation", [&] {
         offspring = generatePopulationOffspring(pop, eta_c, eta_m, rng);
@@ -102,37 +100,31 @@ void nsga2ff(Population &pop, int num_generations, int population_size,
 
       // B. Valutazione della discendenza Q_t (calcolo delle fitness)
       if (mod == 0) {
-        measure("population_evaluation", [&] {
-          evaluatePopulationFFParFor(offspring, evaluator, nw);
-        });
+        measure("population_evaluation",
+                [&] { evaluatePopulationFFParFor(offspring, evaluator, nw); });
       } else {
-        measure("population_evaluation", [&] {
-          evaluatePopulationFFFarm(offspring, evaluator, nw);
-        });
+        measure("population_evaluation",
+                [&] { evaluatePopulationFFFarm(offspring, evaluator, nw); });
       }
 
       // C. Fusione R_t = P_t U Q_t (taglia 2N)
       Population combined_pop;
-      measure("population_merge", [&] {
-        combined_pop = mergePopulations(pop, offspring);
-      });
+      measure("population_merge",
+              [&] { combined_pop = mergePopulations(pop, offspring); });
 
       // D. Non-dominated sorting ed estrazione dei fronti su R_t
       std::vector<std::vector<int>> combined_fronts;
-      measure("population_sorting", [&] {
-        combined_fronts = sortPopulation(combined_pop);
-      });
+      measure("population_sorting",
+              [&] { combined_fronts = sortPopulation(combined_pop); });
 
-      measure("population_crowding", [&] {
-        assignPopulationCrowding(combined_pop, combined_fronts);
-      });
+      measure("population_crowding",
+              [&] { assignPopulationCrowding(combined_pop, combined_fronts); });
 
       // E. Elitismo e troncamento: R_t -> P_{t+1} (taglia N)
       measure("population_truncation", [&] {
         pop = truncatePopulationByFronts(combined_pop, combined_fronts,
                                          population_size);
       });
-
     }
     if (gen > 0) {
       samples["generation_total"].push_back(generation_ms);
@@ -168,8 +160,8 @@ int main(int argc, char *argv[]) {
   std::map<std::string, std::vector<long>> samples;
 
   std::cout << "RUN variant=ff mode=" << mode_name << " workers=" << nw
-            << " generations=" << num_generations << " population="
-            << population_size << std::endl;
+            << " generations=" << num_generations
+            << " population=" << population_size << std::endl;
 
   long data_loading_ms = 0;
   FMODataManager manager;
@@ -196,10 +188,14 @@ int main(int argc, char *argv[]) {
   Evaluator evaluator(manager.getData());
   {
     utimer timer("nsga2_total", &nsga2_total_ms, true);
-    nsga2ff(start, num_generations, population_size, 20.0, 20.0, evaluator,
-            rng, nw, mod, samples);
+    nsga2ff(start, num_generations, population_size, 20.0, 20.0, evaluator, rng,
+            nw, mod, samples);
   }
   samples["nsga2_total"].push_back(nsga2_total_ms);
+
+  double spread = computeSpreadMetric(start);
+  std::cout << "QUALITY variant=ff mode=" << mode_name
+            << " spread_metric=" << spread << std::endl;
 
   for (const auto &[phase, values] : samples) {
     std::vector<long> filtered(values.begin(), values.end());
@@ -211,17 +207,17 @@ int main(int argc, char *argv[]) {
       continue;
     }
     std::sort(filtered.begin(), filtered.end());
-    const double mean = static_cast<double>(
-        std::accumulate(filtered.begin(), filtered.end(), 0L)) /
-        filtered.size();
+    const double mean = static_cast<double>(std::accumulate(
+                            filtered.begin(), filtered.end(), 0L)) /
+                        filtered.size();
     const double median = filtered.size() % 2 == 0
-        ? (filtered[filtered.size() / 2 - 1] +
-           filtered[filtered.size() / 2]) / 2.0
-        : filtered[filtered.size() / 2];
-    std::cout << "TIMING variant=ff mode=" << mode_name << " phase="
-              << phase << " samples=" << filtered.size()
-              << " mean_ms=" << mean << " median_ms=" << median
-              << std::endl;
+                              ? (filtered[filtered.size() / 2 - 1] +
+                                 filtered[filtered.size() / 2]) /
+                                    2.0
+                              : filtered[filtered.size() / 2];
+    std::cout << "TIMING variant=ff mode=" << mode_name << " phase=" << phase
+              << " samples=" << filtered.size() << " mean_ms=" << mean
+              << " median_ms=" << median << std::endl;
   }
 
   return 0;

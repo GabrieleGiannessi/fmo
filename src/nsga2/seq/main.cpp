@@ -26,6 +26,7 @@
 #include <numeric>
 #include <string>
 #include <vector>
+#include <nsga-utils.hpp>
 #define GANTRIES                                                               \
   {0, 72, 144, 216, 288}                                                       \
   // Angoli di gantry da caricare per la matrice globale D
@@ -145,6 +146,10 @@ int main(int argc, char *argv[]) {
              rng, samples);
   }
   samples["nsga2_total"].push_back(nsga2_total_ms);
+
+  double spread = computeSpreadMetric(start);
+  std::cout << "QUALITY variant=seq mode=sequential spread_metric=" 
+            << spread << std::endl;
 
   for (const auto &[phase, values] : samples) {
     std::vector<long> filtered(values.begin(), values.end());

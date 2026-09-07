@@ -20,6 +20,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <map>
+#include <nsga-utils.hpp>
 #include <numeric>
 #include <string>
 #include <vector>
@@ -71,16 +72,13 @@ void nsga2Omp(Population &pop, int num_generations, int population_size,
 
   // 1. Valutazione iniziale di P_0 usando il metodo parallelizzato tramite la
   // libreria OpenMP
-  measure("initial_evaluation", [&] {
-    evaluatePopulationOmp(pop, evaluator, nw);
-  });
+  measure("initial_evaluation",
+          [&] { evaluatePopulationOmp(pop, evaluator, nw); });
 
   // Classificazione iniziale di P_0
   std::vector<std::vector<int>> fronts;
   measure("initial_sorting", [&] { fronts = sortPopulation(pop); });
-  measure("initial_crowding", [&] {
-    assignPopulationCrowding(pop, fronts);
-  });
+  measure("initial_crowding", [&] { assignPopulationCrowding(pop, fronts); });
 
   // 2. Loop Generazionale
   for (int gen = 0; gen < num_generations; ++gen) {
@@ -88,31 +86,29 @@ void nsga2Omp(Population &pop, int num_generations, int population_size,
     {
       utimer generation_timer("generation_total", &generation_ms, true);
 
-      // A. Generazione discendenza Q_t (taglia N) tramite Torneo, SBX e Mutazione
+      // A. Generazione discendenza Q_t (taglia N) tramite Torneo, SBX e
+      // Mutazione
       Population offspring;
       measure("offspring_generation", [&] {
-        offspring = generatePopulationOffspringOmp(pop, eta_c, eta_m, rng(), nw);
+        offspring =
+            generatePopulationOffspringOmp(pop, eta_c, eta_m, rng(), nw);
       });
 
       // B. Valutazione della discendenza Q_t (calcolo delle fitness)
-      measure("population_evaluation", [&] {
-        evaluatePopulationOmp(offspring, evaluator, nw);
-      });
+      measure("population_evaluation",
+              [&] { evaluatePopulationOmp(offspring, evaluator, nw); });
 
       // C. Fusione R_t = P_t U Q_t (taglia 2N)
       Population combined_pop;
-      measure("population_merge", [&] {
-        combined_pop = mergePopulations(pop, offspring);
-      });
+      measure("population_merge",
+              [&] { combined_pop = mergePopulations(pop, offspring); });
 
       // D. Non-dominated sorting ed estrazione dei fronti su R_t
       std::vector<std::vector<int>> combined_fronts;
-      measure("population_sorting", [&] {
-        combined_fronts = sortPopulation(combined_pop);
-      });
-      measure("population_crowding", [&] {
-        assignPopulationCrowding(combined_pop, combined_fronts);
-      });
+      measure("population_sorting",
+              [&] { combined_fronts = sortPopulation(combined_pop); });
+      measure("population_crowding",
+              [&] { assignPopulationCrowding(combined_pop, combined_fronts); });
 
       // E. Elitismo e troncamento: R_t -> P_{t+1} (taglia N)
       measure("population_truncation", [&] {
@@ -123,7 +119,6 @@ void nsga2Omp(Population &pop, int num_generations, int population_size,
     if (gen > 0) {
       samples["generation_total"].push_back(generation_ms);
     }
-
   }
 }
 
@@ -145,8 +140,8 @@ int main(int argc, char *argv[]) {
   std::map<std::string, std::vector<long>> samples;
 
   std::cout << "RUN variant=omp mode=openmp workers=" << nw
-            << " generations=" << num_generations << " population="
-            << population_size << std::endl;
+            << " generations=" << num_generations
+            << " population=" << population_size << std::endl;
 
   long data_loading_ms = 0;
   FMODataManager manager;
@@ -179,6 +174,10 @@ int main(int argc, char *argv[]) {
   }
   samples["nsga2_total"].push_back(nsga2_total_ms);
 
+  double spread = computeSpreadMetric(start);
+  std::cout << "QUALITY variant=omp mode=openmp spread_metric=" << spread
+            << std::endl;
+
   for (const auto &[phase, values] : samples) {
     std::vector<long> filtered(values.begin(), values.end());
     if (phase != "data_loading" && phase != "initial_population" &&
@@ -189,13 +188,14 @@ int main(int argc, char *argv[]) {
       continue;
     }
     std::sort(filtered.begin(), filtered.end());
-    const double mean = static_cast<double>(
-        std::accumulate(filtered.begin(), filtered.end(), 0L)) /
-        filtered.size();
+    const double mean = static_cast<double>(std::accumulate(
+                            filtered.begin(), filtered.end(), 0L)) /
+                        filtered.size();
     const double median = filtered.size() % 2 == 0
-        ? (filtered[filtered.size() / 2 - 1] +
-           filtered[filtered.size() / 2]) / 2.0
-        : filtered[filtered.size() / 2];
+                              ? (filtered[filtered.size() / 2 - 1] +
+                                 filtered[filtered.size() / 2]) /
+                                    2.0
+                              : filtered[filtered.size() / 2];
     std::cout << "TIMING variant=omp mode=openmp phase=" << phase
               << " samples=" << filtered.size() << " mean_ms=" << mean
               << " median_ms=" << median << std::endl;
