@@ -67,7 +67,7 @@ void test_truncation_and_elitism() {
   check(next.size() == 3, "truncation returns requested size");
   check(next.getIndividual(0).getRank() == 1 && next.getIndividual(1).getRank() == 1,
         "elitism keeps complete better fronts");
-  check(next.getIndividual(2).getFitness().value_target_ptv == 3.0,
+  check(next.getIndividual(2).getFitness().getPTVFitness() == 3.0,
         "truncation keeps least crowded split-front member");
 }
 
