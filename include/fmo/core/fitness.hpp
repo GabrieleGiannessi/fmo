@@ -14,28 +14,28 @@
  */
 #pragma once
 class Fitness {
-public:
+private:
   double value_target_ptv;  // Punteggio di fitness relativo al target PTV
   double value_oar_rectal;  // Punteggio di fitness relativo al retto (OAR)
   double value_oar_bladder; // Punteggio di fitness relativo alla vescica (OAR)
-
+public:
   Fitness(double value_target_ptv, double value_oar_rectal,
           double value_oar_bladder)
       : value_target_ptv(value_target_ptv), value_oar_rectal(value_oar_rectal),
         value_oar_bladder(value_oar_bladder) {}
 
-  Fitness() : value_target_ptv(0.0), value_oar_rectal(0.0),
-              value_oar_bladder(0.0) {}
-private:
+  Fitness()
+      : value_target_ptv(0.0), value_oar_rectal(0.0), value_oar_bladder(0.0) {}
+
   // getters
   //  metodo per ottenere il punteggio di fitness relativo al target PTV
-  double getValueTargetPTV() const { return value_target_ptv; }
+  double getPTVFitness() const { return value_target_ptv; }
 
   // metodo per ottenere il punteggio di fitness relativo al retto (OAR)
-  double getValueOARRectal() const { return value_oar_rectal; }
+  double getRectalFitness() const { return value_oar_rectal; }
 
   // metodo per ottenere il punteggio di fitness relativo alla vescica (OAR)
-  double getValueOARBladder() const { return value_oar_bladder; }
+  double getBladderFitness() const { return value_oar_bladder; }
 
   // setters
   //  metodo di modifica del punteggio di fitness relativo al target PTV
@@ -46,6 +46,4 @@ private:
 
   // metodo di modifica del punteggio di fitness relativo alla vescica (OAR)
   void setValueOARBladder(double value) { this->value_oar_bladder = value; }
-
-  
 };
