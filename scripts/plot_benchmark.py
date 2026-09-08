@@ -176,16 +176,67 @@ def print_terminal_summary(summary_rows, stab_rows=None):
         print("=" * 110 + "\n")
 
 
-def generate_svg_chart(title, x_label, y_label, series_data, out_path, is_speedup=False, is_efficiency=False):
+def generate_svg_chart(
+    title,
+    x_label,
+    y_label,
+    series_data,
+    out_path,
+    is_speedup=False,
+    is_efficiency=False,
+    is_time=False,
+    is_stability=False,
+    speedup_mode="log",
+    time_mode="linear",
+    theme="light"
+):
     """
-    Genera un grafico vettoriale SVG autosufficiente e moderno senza dipendenze esterne.
+    Genera un grafico vettoriale SVG professionale e pulito, pronto per report e tesi.
+    Supporta tema chiaro (sfondo bianco puro, ideale per report/stampe) e scuro,
+    spaziatura uniforme log2 per le potenze di 2 e marcatori distinti per ogni serie.
     """
-    w, h = 760, 460
-    pad_left, pad_right, pad_top, pad_bottom = 80, 190, 60, 60
+    w, h = 800, 480
+    pad_left, pad_right, pad_top, pad_bottom = 75, 185, 55, 60
     plot_w = w - pad_left - pad_right
     plot_h = h - pad_top - pad_bottom
 
-    # Raccogli tutti i punti X e Y
+    # Palette ad alto contrasto adatta sia a schermo che a stampa
+    palette = [
+        {"color": "#0969da", "shape": "circle"},     # Blu
+        {"color": "#1a7f37", "shape": "rect"},       # Verde
+        {"color": "#d1242f", "shape": "triangle"},   # Rosso
+        {"color": "#8250df", "shape": "diamond"},    # Viola
+        {"color": "#e36209", "shape": "circle"},     # Arancione
+        {"color": "#0891b2", "shape": "rect"},       # Ciano
+    ]
+
+    if theme == "light":
+        bg_canvas = "#ffffff"
+        bg_plot = "#ffffff"
+        border_plot = "#334155"
+        grid_major = "#e2e8f0"
+        grid_minor = "#f8fafc"
+        text_title = "#0f172a"
+        text_axis = "#1e293b"
+        text_tick = "#475569"
+        card_bg = "#f8fafc"
+        card_border = "#cbd5e1"
+        legend_text = "#1e293b"
+        ideal_color = "#64748b"
+    else:
+        bg_canvas = "#0d1117"
+        bg_plot = "#161b22"
+        border_plot = "#30363d"
+        grid_major = "#21262d"
+        grid_minor = "#161b22"
+        text_title = "#f0f6fc"
+        text_axis = "#8b949e"
+        text_tick = "#8b949e"
+        card_bg = "#161b22"
+        card_border = "#30363d"
+        legend_text = "#c9d1d9"
+        ideal_color = "#8b949e"
+
     all_x = []
     all_y = []
     for label, points in series_data.items():
@@ -197,92 +248,198 @@ def generate_svg_chart(title, x_label, y_label, series_data, out_path, is_speedu
     if not all_x or not all_y:
         return
 
-    min_x, max_x = min(all_x), max(all_x)
-    min_y = 0.0
-    max_y = max(all_y)
+    unique_x = sorted(list(set(all_x)))
+    min_x, max_x = min(unique_x), max(unique_x)
 
-    if is_speedup:
-        max_y = max(max_y, max_x)
-    elif is_efficiency:
-        max_y = max(max_y, 105.0)
+    # Rilevamento scala log2 su X (evita sovrapposizioni su 1, 2, 4...)
+    use_log_x = (min_x > 0 and (max_x / min_x >= 4) and all(x > 0 for x in unique_x))
+    log2_min_x = math.log2(min_x) if use_log_x else 0
+    log2_max_x = math.log2(max_x) if use_log_x else 0
 
-    if max_x == min_x:
-        max_x = min_x + 1
-    if max_y == min_y:
-        max_y = min_y + 1
-
-    # Funzioni coordinate pixel
     def to_px(val_x):
-        return pad_left + (val_x - min_x) / (max_x - min_x) * plot_w
+        if use_log_x:
+            if log2_max_x == log2_min_x:
+                return pad_left + plot_w / 2
+            return pad_left + (math.log2(val_x) - log2_min_x) / (log2_max_x - log2_min_x) * plot_w
+        else:
+            if max_x == min_x:
+                return pad_left + plot_w / 2
+            return pad_left + (val_x - min_x) / (max_x - min_x) * plot_w
+
+    use_log_y = False
+    if is_speedup and speedup_mode == "log":
+        use_log_y = True
+        min_y = 1.0
+        max_y = float(max_x)
+        log2_min_y = 0.0
+        log2_max_y = math.log2(max_y)
+    elif is_speedup and speedup_mode == "linear":
+        min_y = 0.0
+        max_actual_y = max(all_y)
+        max_y = math.ceil(max_actual_y * 1.15 / 5.0) * 5.0
+        if max_y < 2.0: max_y = 2.0
+    elif is_efficiency:
+        min_y = 0.0
+        max_y = 105.0
+    elif is_time and time_mode == "log":
+        use_log_y = True
+        min_y = max(1.0, 10 ** math.floor(math.log10(min(all_y))))
+        max_y = 10 ** math.ceil(math.log10(max(all_y)))
+        log10_min_y = math.log10(min_y)
+        log10_max_y = math.log10(max_y)
+    elif is_time:
+        min_y = 0.0
+        max_y = max(all_y) * 1.08
+    elif is_stability:
+        min_y = 0.0
+        max_act = max(all_y)
+        max_y = math.ceil(max_act * 1.25 * 10.0) / 10.0 if max_act > 0 else 1.0
+    else:
+        min_y = 0.0
+        max_y = max(all_y) * 1.15 if max(all_y) > 0 else 1.0
 
     def to_py(val_y):
-        return pad_top + plot_h - (val_y - min_y) / (max_y - min_y) * plot_h
-
-    # Colori serie
-    palette = ['#58a6ff', '#3fb950', '#f0883e', '#d29922', '#bc8cff', '#79c0ff']
+        if use_log_y and is_speedup:
+            safe_y = max(val_y, min_y)
+            return pad_top + plot_h - (math.log2(safe_y) - log2_min_y) / (log2_max_y - log2_min_y) * plot_h
+        elif use_log_y and is_time:
+            safe_y = max(val_y, min_y)
+            return pad_top + plot_h - (math.log10(safe_y) - log10_min_y) / (log10_max_y - log10_min_y) * plot_h
+        else:
+            if max_y == min_y:
+                return pad_top + plot_h / 2
+            return pad_top + plot_h - (val_y - min_y) / (max_y - min_y) * plot_h
 
     svg = [
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" width="{w}" height="{h}">',
-        f'<rect width="{w}" height="{h}" fill="#0d1117" rx="8" />',
-        # Titolo
-        f'<text x="{pad_left}" y="36" fill="#f0f6fc" font-family="sans-serif" font-size="18" font-weight="bold">{title}</text>',
-        # Riquadro area plot
-        f'<rect x="{pad_left}" y="{pad_top}" width="{plot_w}" height="{plot_h}" fill="#161b22" stroke="#30363d" stroke-width="1" />'
+        f'<rect width="{w}" height="{h}" fill="{bg_canvas}" />',
+        f'<text x="{pad_left}" y="36" fill="{text_title}" font-family="system-ui, -apple-system, sans-serif" font-size="16" font-weight="bold">{title}</text>',
+        f'<rect x="{pad_left}" y="{pad_top}" width="{plot_w}" height="{plot_h}" fill="{bg_plot}" stroke="{border_plot}" stroke-width="1.2" />'
     ]
 
-    # Linee griglia orizzontale Y
-    y_ticks = 5
-    for i in range(y_ticks + 1):
-        y_val = min_y + (max_y - min_y) * (i / y_ticks)
-        py = to_py(y_val)
-        svg.append(f'<line x1="{pad_left}" y1="{py}" x2="{pad_left + plot_w}" y2="{py}" stroke="#21262d" stroke-width="1" />')
-        y_text = f"{y_val:.1f}" if is_speedup or is_efficiency else (f"{y_val:.0f}" if y_val >= 10 else f"{y_val:.2f}")
-        svg.append(f'<text x="{pad_left - 10}" y="{py + 4}" fill="#8b949e" font-family="sans-serif" font-size="12" text-anchor="end">{y_text}</text>')
+    # Asse Y
+    if use_log_y and is_speedup:
+        powers = range(int(log2_min_y), int(log2_max_y) + 1)
+        for p in powers:
+            val_y = 2 ** p
+            py = to_py(val_y)
+            svg.append(f'<line x1="{pad_left}" y1="{py:.1f}" x2="{pad_left + plot_w}" y2="{py:.1f}" stroke="{grid_major}" stroke-width="1" stroke-dasharray="3,3" />')
+            svg.append(f'<text x="{pad_left - 10}" y="{py + 4:.1f}" fill="{text_tick}" font-family="system-ui, -apple-system, sans-serif" font-size="11" text-anchor="end">{int(val_y)}x</text>')
+    elif use_log_y and is_time:
+        for p in range(int(log10_min_y), int(log10_max_y) + 1):
+            val_y = 10 ** p
+            py = to_py(val_y)
+            svg.append(f'<line x1="{pad_left}" y1="{py:.1f}" x2="{pad_left + plot_w}" y2="{py:.1f}" stroke="{grid_major}" stroke-width="1" stroke-dasharray="3,3" />')
+            svg.append(f'<text x="{pad_left - 10}" y="{py + 4:.1f}" fill="{text_tick}" font-family="system-ui, -apple-system, sans-serif" font-size="11" text-anchor="end">{int(val_y)}s</text>')
+    else:
+        y_ticks = 5
+        for i in range(y_ticks + 1):
+            y_val = min_y + (max_y - min_y) * (i / y_ticks)
+            py = to_py(y_val)
+            svg.append(f'<line x1="{pad_left}" y1="{py:.1f}" x2="{pad_left + plot_w}" y2="{py:.1f}" stroke="{grid_major}" stroke-width="1" stroke-dasharray="3,3" />')
+            if is_efficiency:
+                y_text = f"{y_val:.0f}%"
+            elif is_speedup:
+                y_text = f"{y_val:.1f}x"
+            elif is_time:
+                y_text = f"{y_val:.0f}s" if y_val >= 10 else f"{y_val:.2f}s"
+            elif is_stability:
+                y_text = f"{y_val:.2f}"
+            else:
+                y_text = f"{y_val:.1f}"
+            svg.append(f'<text x="{pad_left - 10}" y="{py + 4:.1f}" fill="{text_tick}" font-family="system-ui, -apple-system, sans-serif" font-size="11" text-anchor="end">{y_text}</text>')
 
-    # Linea ideale
+    # Asse X
+    for ux in unique_x:
+        px = to_px(ux)
+        svg.append(f'<line x1="{px:.1f}" y1="{pad_top}" x2="{px:.1f}" y2="{pad_top + plot_h}" stroke="{grid_minor}" stroke-width="1" stroke-dasharray="2,2" />')
+        svg.append(f'<line x1="{px:.1f}" y1="{pad_top + plot_h}" x2="{px:.1f}" y2="{pad_top + plot_h + 5}" stroke="{border_plot}" stroke-width="1.2" />')
+        svg.append(f'<text x="{px:.1f}" y="{pad_top + plot_h + 18}" fill="{text_tick}" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="500" text-anchor="middle">{ux}</text>')
+
+    # Linea ideale (Speedup o Efficienza)
     if is_speedup:
-        svg.append(f'<line x1="{to_px(min_x)}" y1="{to_py(min_x)}" x2="{to_px(max_x)}" y2="{to_py(max_x)}" stroke="#8b949e" stroke-width="1.5" stroke-dasharray="5,5" />')
+        if use_log_y:
+            p1_x, p1_y = to_px(min_x), to_py(min_x)
+            p2_x, p2_y = to_px(max_x), to_py(max_x)
+            svg.append(f'<line x1="{p1_x:.1f}" y1="{p1_y:.1f}" x2="{p2_x:.1f}" y2="{p2_y:.1f}" stroke="{ideal_color}" stroke-width="1.6" stroke-dasharray="5,4" />')
+        else:
+            ideal_pts = []
+            for ux in unique_x:
+                if ux <= max_y:
+                    ideal_pts.append((to_px(ux), to_py(ux)))
+                else:
+                    ideal_pts.append((to_px(ux), to_py(max_y)))
+                    break
+            if len(ideal_pts) > 1:
+                poly = " ".join([f"{x:.1f},{y:.1f}" for x, y in ideal_pts])
+                svg.append(f'<polyline fill="none" stroke="{ideal_color}" stroke-width="1.6" stroke-dasharray="5,4" points="{poly}" />')
     elif is_efficiency:
-        svg.append(f'<line x1="{pad_left}" y1="{to_py(100.0)}" x2="{pad_left + plot_w}" y2="{to_py(100.0)}" stroke="#8b949e" stroke-width="1.5" stroke-dasharray="5,5" />')
+        py_100 = to_py(100.0)
+        svg.append(f'<line x1="{pad_left}" y1="{py_100:.1f}" x2="{pad_left + plot_w}" y2="{py_100:.1f}" stroke="{ideal_color}" stroke-width="1.6" stroke-dasharray="5,4" />')
 
-    # Tracciamento serie
-    legend_y = pad_top + 15
+    # Tracciamento serie dati
+    legend_entries = []
     for idx, (label, points) in enumerate(series_data.items()):
-        color = palette[idx % len(palette)]
+        style = palette[idx % len(palette)]
+        color = style["color"]
+        shape = style["shape"]
         valid_pts = [(px, py) for px, py in points if px is not None and py is not None]
         valid_pts.sort(key=lambda p: p[0])
 
         if len(valid_pts) > 1:
             poly_points = " ".join([f"{to_px(px):.1f},{to_py(py):.1f}" for px, py in valid_pts])
-            svg.append(f'<polyline fill="none" stroke="{color}" stroke-width="2.5" points="{poly_points}" />')
+            svg.append(f'<polyline fill="none" stroke="{color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" points="{poly_points}" />')
 
-        # Marcatori
         for px, py in valid_pts:
             cx, cy = to_px(px), to_py(py)
-            svg.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="4" fill="{color}" stroke="#0d1117" stroke-width="1.5" />')
+            if shape == "rect":
+                svg.append(f'<rect x="{cx - 4:.1f}" y="{cy - 4:.1f}" width="8" height="8" fill="{color}" stroke="#ffffff" stroke-width="1.5" />')
+            elif shape == "triangle":
+                svg.append(f'<polygon points="{cx:.1f},{cy - 5.5:.1f} {cx + 5:.1f},{cy + 4.5:.1f} {cx - 5:.1f},{cy + 4.5:.1f}" fill="{color}" stroke="#ffffff" stroke-width="1.5" />')
+            elif shape == "diamond":
+                svg.append(f'<polygon points="{cx:.1f},{cy - 5.5:.1f} {cx + 5:.1f},{cy:.1f} {cx:.1f},{cy + 5.5:.1f} {cx - 5:.1f},{cy:.1f}" fill="{color}" stroke="#ffffff" stroke-width="1.5" />')
+            else:
+                svg.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="4.5" fill="{color}" stroke="#ffffff" stroke-width="1.5" />')
 
-        # Legenda
-        svg.append(f'<rect x="{pad_left + plot_w + 15}" y="{legend_y - 10}" width="12" height="12" fill="{color}" rx="2" />')
-        svg.append(f'<text x="{pad_left + plot_w + 35}" y="{legend_y}" fill="#c9d1d9" font-family="sans-serif" font-size="12">{label}</text>')
-        legend_y += 24
+        legend_entries.append((label, color, shape))
+
+    # Box Legenda
+    legend_h = len(legend_entries) * 24 + (24 if (is_speedup or is_efficiency) else 10) + 12
+    legend_x = pad_left + plot_w + 14
+    legend_y = pad_top
+    svg.append(f'<rect x="{legend_x}" y="{legend_y}" width="{pad_right - 24}" height="{legend_h}" fill="{card_bg}" stroke="{card_border}" stroke-width="1" rx="6" />')
+
+    cur_y = legend_y + 18
+    for label, color, shape in legend_entries:
+        icon_cx = legend_x + 16
+        icon_cy = cur_y - 4
+        svg.append(f'<line x1="{icon_cx - 8}" y1="{icon_cy}" x2="{icon_cx + 8}" y2="{icon_cy}" stroke="{color}" stroke-width="2" />')
+        if shape == "rect":
+            svg.append(f'<rect x="{icon_cx - 3.5}" y="{icon_cy - 3.5}" width="7" height="7" fill="{color}" stroke="#ffffff" stroke-width="1" />')
+        elif shape == "triangle":
+            svg.append(f'<polygon points="{icon_cx},{icon_cy - 4} {icon_cx + 4},{icon_cy + 3.5} {icon_cx - 4},{icon_cy + 3.5}" fill="{color}" stroke="#ffffff" stroke-width="1" />')
+        elif shape == "diamond":
+            svg.append(f'<polygon points="{icon_cx},{icon_cy - 4.5} {icon_cx + 4},{icon_cy} {icon_cx},{icon_cy + 4.5} {icon_cx - 4},{icon_cy}" fill="{color}" stroke="#ffffff" stroke-width="1" />')
+        else:
+            svg.append(f'<circle cx="{icon_cx}" cy="{icon_cy}" r="3.5" fill="{color}" stroke="#ffffff" stroke-width="1" />')
+
+        svg.append(f'<text x="{legend_x + 32}" y="{cur_y}" fill="{legend_text}" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="500">{label}</text>')
+        cur_y += 22
 
     if is_speedup:
-        svg.append(f'<line x1="{pad_left + plot_w + 15}" y1="{legend_y - 4}" x2="{pad_left + plot_w + 27}" y2="{legend_y - 4}" stroke="#8b949e" stroke-dasharray="3,3" stroke-width="2" />')
-        svg.append(f'<text x="{pad_left + plot_w + 35}" y="{legend_y}" fill="#8b949e" font-family="sans-serif" font-size="12">Ideale (S = p)</text>')
+        icon_cx = legend_x + 16
+        icon_cy = cur_y - 4
+        svg.append(f'<line x1="{icon_cx - 8}" y1="{icon_cy}" x2="{icon_cx + 8}" y2="{icon_cy}" stroke="{ideal_color}" stroke-dasharray="3,2" stroke-width="1.8" />')
+        svg.append(f'<text x="{legend_x + 32}" y="{cur_y}" fill="{ideal_color}" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="500">Ideale (S = p)</text>')
     elif is_efficiency:
-        svg.append(f'<line x1="{pad_left + plot_w + 15}" y1="{legend_y - 4}" x2="{pad_left + plot_w + 27}" y2="{legend_y - 4}" stroke="#8b949e" stroke-dasharray="3,3" stroke-width="2" />')
-        svg.append(f'<text x="{pad_left + plot_w + 35}" y="{legend_y}" fill="#8b949e" font-family="sans-serif" font-size="12">Ideale (100%)</text>')
+        icon_cx = legend_x + 16
+        icon_cy = cur_y - 4
+        svg.append(f'<line x1="{icon_cx - 8}" y1="{icon_cy}" x2="{icon_cx + 8}" y2="{icon_cy}" stroke="{ideal_color}" stroke-dasharray="3,2" stroke-width="1.8" />')
+        svg.append(f'<text x="{legend_x + 32}" y="{cur_y}" fill="{ideal_color}" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="500">Ideale (100%)</text>')
 
     # Etichette assi
-    svg.append(f'<text x="{pad_left + plot_w / 2}" y="{h - 15}" fill="#8b949e" font-family="sans-serif" font-size="13" text-anchor="middle">{x_label}</text>')
-    svg.append(f'<text x="22" y="{pad_top + plot_h / 2}" fill="#8b949e" font-family="sans-serif" font-size="13" text-anchor="middle" transform="rotate(-90 22 {pad_top + plot_h / 2})">{y_label}</text>')
-
-    # Tick X
-    unique_x = sorted(list(set(all_x)))
-    for ux in unique_x:
-        px = to_px(ux)
-        svg.append(f'<line x1="{px}" y1="{pad_top + plot_h}" x2="{px}" y2="{pad_top + plot_h + 5}" stroke="#8b949e" stroke-width="1" />')
-        svg.append(f'<text x="{px}" y="{pad_top + plot_h + 20}" fill="#8b949e" font-family="sans-serif" font-size="11" text-anchor="middle">{ux}</text>')
+    svg.append(f'<text x="{pad_left + plot_w / 2}" y="{h - 15}" fill="{text_axis}" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600" text-anchor="middle">{x_label}</text>')
+    svg.append(f'<text x="22" y="{pad_top + plot_h / 2}" fill="{text_axis}" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600" text-anchor="middle" transform="rotate(-90 22 {pad_top + plot_h / 2})">{y_label}</text>')
 
     svg.append('</svg>')
 
@@ -292,7 +449,7 @@ def generate_svg_chart(title, x_label, y_label, series_data, out_path, is_speedu
     print(f"Grafico SVG salvato: {out_path}")
 
 
-def generate_all_svg_charts(summary_rows, results_dir, stab_rows=None):
+def generate_all_svg_charts(summary_rows, results_dir, stab_rows=None, theme="light"):
     """
     Genera i grafici SVG standalone per la fase principale e per la stabilità.
     """
@@ -317,33 +474,66 @@ def generate_all_svg_charts(summary_rows, results_dir, stab_rows=None):
         if eff_t1 is not None:
             eff_series[label].append((w, eff_t1))
 
+    # 1. Speedup principale (Log-Log per rappresentazione standard HPC)
     generate_svg_chart(
         f"Speedup vs Cores ({target_phase})",
         "Numero di Cores / Workers",
         "Speedup (T1 / Tp)",
         speedup_series,
         os.path.join(results_dir, "speedup.svg"),
-        is_speedup=True
+        is_speedup=True,
+        speedup_mode="log",
+        theme=theme
     )
 
+    # 2. Speedup scala lineare (alternativa per report)
+    generate_svg_chart(
+        f"Speedup vs Cores - Scala Lineare ({target_phase})",
+        "Numero di Cores / Workers",
+        "Speedup (T1 / Tp)",
+        speedup_series,
+        os.path.join(results_dir, "speedup_linear.svg"),
+        is_speedup=True,
+        speedup_mode="linear",
+        theme=theme
+    )
+
+    # 3. Efficienza Parallela
     generate_svg_chart(
         f"Efficienza Parallela vs Cores ({target_phase})",
         "Numero di Cores / Workers",
         "Efficienza Parallela (%)",
         eff_series,
         os.path.join(results_dir, "efficiency.svg"),
-        is_efficiency=True
+        is_efficiency=True,
+        theme=theme
     )
 
+    # 4. Tempo di Esecuzione lineare
     generate_svg_chart(
         f"Tempo di Esecuzione vs Cores ({target_phase})",
         "Numero di Cores / Workers",
         "Tempo (secondi)",
         time_series,
         os.path.join(results_dir, "execution_time.svg"),
-        is_speedup=False
+        is_time=True,
+        time_mode="linear",
+        theme=theme
     )
 
+    # 5. Tempo di Esecuzione logaritmico
+    generate_svg_chart(
+        f"Tempo di Esecuzione vs Cores - Scala Log ({target_phase})",
+        "Numero di Cores / Workers",
+        "Tempo (secondi, scala log10)",
+        time_series,
+        os.path.join(results_dir, "execution_time_log.svg"),
+        is_time=True,
+        time_mode="log",
+        theme=theme
+    )
+
+    # 6. Stabilità delle soluzioni
     if stab_rows:
         stab_series = defaultdict(list)
         for r in stab_rows:
@@ -361,7 +551,8 @@ def generate_all_svg_charts(summary_rows, results_dir, stab_rows=None):
                 "RMSE Fitness (vs Baseline)",
                 stab_series,
                 os.path.join(results_dir, "solution_stability.svg"),
-                is_speedup=False
+                is_stability=True,
+                theme=theme
             )
 
 
@@ -611,10 +802,12 @@ def generate_html_report(summary_rows, raw_rows, results_dir, stab_rows=None):
         </header>
 
         <div class="links-bar">
-            <strong>Grafici e Dati:</strong>
-            <a href="speedup.svg" target="_blank">📈 speedup.svg</a>
+            <strong>Grafici Vettoriali e Dati:</strong>
+            <a href="speedup.svg" target="_blank">📈 speedup.svg (log)</a>
+            <a href="speedup_linear.svg" target="_blank">📈 speedup_linear.svg</a>
             <a href="efficiency.svg" target="_blank">⚡ efficiency.svg</a>
             <a href="execution_time.svg" target="_blank">⏱️ execution_time.svg</a>
+            <a href="execution_time_log.svg" target="_blank">⏱️ execution_time_log.svg</a>
             {stab_link_html}
             <a href="summary.csv" download>📄 summary.csv</a>
             <a href="timings_raw.csv" download>📄 timings_raw.csv</a>
@@ -933,18 +1126,38 @@ def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     fmo_dir = os.path.abspath(os.path.join(script_dir, ".."))
 
-    target = sys.argv[1] if len(sys.argv) > 1 else find_latest_results_dir(fmo_dir)
+    target = None
+    theme = "light"
+
+    args = sys.argv[1:]
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg in ("--theme", "-t") and i + 1 < len(args):
+            theme = args[i + 1].lower()
+            i += 2
+        elif arg.startswith("--theme="):
+            theme = arg.split("=")[1].lower()
+            i += 1
+        elif not arg.startswith("-"):
+            target = arg
+            i += 1
+        else:
+            i += 1
+
+    if not target:
+        target = find_latest_results_dir(fmo_dir)
 
     if not target or not os.path.exists(target):
-        print("Uso: python3 plot_benchmark.py <PATH_CARTELLA_RISULTATI_O_CSV>")
+        print("Uso: python3 plot_benchmark.py [PATH_CARTELLA_RISULTATI_O_CSV] [--theme light|dark]")
         print("Nessuna directory dei risultati trovata.")
         sys.exit(1)
 
-    print(f"Caricamento dati da: {target}")
+    print(f"Caricamento dati da: {target} (Tema grafici SVG: {theme})")
     summary_rows, raw_rows, stab_rows, results_dir = load_data(target)
 
     print_terminal_summary(summary_rows, stab_rows)
-    generate_all_svg_charts(summary_rows, results_dir, stab_rows)
+    generate_all_svg_charts(summary_rows, results_dir, stab_rows, theme=theme)
     generate_html_report(summary_rows, raw_rows, results_dir, stab_rows)
     generate_matplotlib_figures(summary_rows, results_dir)
 
