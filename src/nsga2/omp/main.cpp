@@ -92,7 +92,8 @@ void nsga2Omp(Population &pop, int num_generations, int population_size,
       Population offspring;
       measure("offspring_generation", [&] {
         offspring =
-            generatePopulationOffspringOmp(pop, eta_c, eta_m, rng(), nw);
+            // generatePopulationOffspringOmp(pop, eta_c, eta_m, rng(), nw);
+            generatePopulationOffspring(pop,eta_c, eta_m, rng); 
       });
 
       // B. Valutazione della discendenza Q_t (calcolo delle fitness)
