@@ -22,6 +22,16 @@ void evaluatePopulationOmp(Population &population, Evaluator &evaluator,
   }
   // TIMERSTOP(population_evaluation);
 }
+/**
+ * @brief versione sequenziale della generazione della progenie
+ * (engine-seq.cpp). Usa un solo PNRG per le funzioni di crossover e mutazione
+ * (sequenziale, un solo thread)
+ */
+Population generatePopulationOffspring(Population &population, double eta_c,
+                                       double eta_m, std::mt19937 &rng) {
+  Population offspring = generateOffSpring(population, eta_c, eta_m, rng);
+  return offspring;
+}
 
 /**
  * @brief generazione della nuova prole distribuendo il calcolo dei nuovi
