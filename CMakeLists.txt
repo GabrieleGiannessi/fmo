@@ -154,3 +154,4 @@ target_link_libraries(nsga2-ff PRIVATE
 add_test(NAME test-core COMMAND test-core)
 add_test(NAME test-nsga2 COMMAND test-nsga2)
 add_test(NAME test-metrics COMMAND test-metrics)
+add_test(NAME test-cli-params COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/test-cli-params.sh)

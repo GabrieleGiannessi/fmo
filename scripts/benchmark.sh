@@ -25,6 +25,8 @@ BUILD_DIR="${FMO_DIR}/build"
 DEFAULT_WORKERS="1 2 4 8 16 32 64 128 256"
 DEFAULT_VARIANTS="seq,omp,ff-parfor,ff-farm"
 DEFAULT_REPETITIONS=3
+DEFAULT_POP_SIZE=256
+DEFAULT_GENERATIONS=50
 DEFAULT_OUTPUT_DIR=""
 BUILD_BEFORE_RUN=false
 DRY_RUN=false
@@ -33,6 +35,8 @@ TIMEOUT_SEC=""
 WORKERS=""
 VARIANTS=""
 REPETITIONS=""
+POP_SIZE=""
+GENERATIONS=""
 OUTPUT_DIR=""
 
 # PID del processo figlio attualmente in esecuzione (per gestione SIGINT)
@@ -62,6 +66,8 @@ ${BOLD}OPZIONI:${NC}
   -v, --variants <LISTA>      Varianti da eseguire (default: "$DEFAULT_VARIANTS")
                               Valori ammessi: seq, omp, ff-parfor, ff-farm, all
   -r, --repetitions <NUM>     Numero di ripetizioni per configurazione (default: $DEFAULT_REPETITIONS)
+  -p, --pop-size <NUM>        Dimensione popolazione N (default: $DEFAULT_POP_SIZE)
+  -g, --generations <NUM>     Numero di generazioni G (default: $DEFAULT_GENERATIONS)
   -o, --output-dir <PATH>     Directory di output per log e CSV (default: fmo/results/run_<TIMESTAMP>)
   -b, --build                 Esegue la compilazione (scripts/build.sh) prima dei benchmark
   -t, --timeout <SEC>         Timeout in secondi per ogni singolo run (opzionale)
@@ -69,14 +75,14 @@ ${BOLD}OPZIONI:${NC}
   -h, --help                  Mostra questa schermata di aiuto
 
 ${BOLD}ESEMPI:${NC}
-  # Esecuzione completa di default (seq, omp, ff-parfor, ff-farm fino a 256 core, 3 ripetizioni):
+  # Esecuzione completa di default (seq, omp, ff-parfor, ff-farm fino a 256 core, N=256, 3 ripetizioni):
   ./scripts/benchmark.sh
 
-  # Test rapido di verifica su OpenMP con 1 ripetizione:
-  ./scripts/benchmark.sh -v omp -w "1 2 4 8" -r 1
+  # Test rapido di verifica su OpenMP con 1 ripetizione, N=64 e 10 generazioni:
+  ./scripts/benchmark.sh -v omp -w "1 2 4 8" -r 1 -p 64 -g 10
 
-  # Test di scalabilità esteso solo per OpenMP e FastFlow Farm su macchina a 256 core:
-  ./scripts/benchmark.sh -v "omp,ff-farm" -w "1 2 4 8 16 32 64 128 256" -r 5
+  # Test di scalabilità esteso solo per OpenMP e FastFlow Farm su macchina a 256 core con N=256:
+  ./scripts/benchmark.sh -v "omp,ff-farm" -w "1 2 4 8 16 32 64 128 256" -r 5 -p 256
 
 EOF
 }
@@ -115,6 +121,14 @@ while [[ $# -gt 0 ]]; do
             REPETITIONS="$2"
             shift 2
             ;;
+        -p|--pop-size|--population)
+            POP_SIZE="$2"
+            shift 2
+            ;;
+        -g|--generations)
+            GENERATIONS="$2"
+            shift 2
+            ;;
         -o|--output-dir)
             OUTPUT_DIR="$2"
             shift 2
@@ -150,6 +164,8 @@ WORKERS=$(echo "$WORKERS" | tr ',' ' ')
 
 VARIANTS="${VARIANTS:-$DEFAULT_VARIANTS}"
 REPETITIONS="${REPETITIONS:-$DEFAULT_REPETITIONS}"
+POP_SIZE="${POP_SIZE:-$DEFAULT_POP_SIZE}"
+GENERATIONS="${GENERATIONS:-$DEFAULT_GENERATIONS}"
 
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 if [[ -z "$OUTPUT_DIR" ]]; then
@@ -246,6 +262,8 @@ echo -e "${BOLD}Data di avvio:${NC}     $(date)"
 echo -e "${BOLD}Varianti:${NC}          ${UNIQUE_VARIANTS[*]}"
 echo -e "${BOLD}Workers testati:${NC}   $WORKERS"
 echo -e "${BOLD}Ripetizioni:${NC}       $REPETITIONS"
+echo -e "${BOLD}Popolazione (N):${NC}   $POP_SIZE"
+echo -e "${BOLD}Generazioni (G):${NC}   $GENERATIONS"
 echo -e "${BOLD}Totale esecuzioni:${NC} $TOTAL_TESTS"
 echo -e "${BOLD}Output directory:${NC}  $OUTPUT_DIR"
 if [[ -n "$TIMEOUT_SEC" ]]; then
@@ -260,19 +278,19 @@ if [[ "$DRY_RUN" == true ]]; then
     for rep in $(seq 1 "$REPETITIONS"); do
         for v in "${UNIQUE_VARIANTS[@]}"; do
             if [[ "$v" == "seq" ]]; then
-                echo "  [$idx/$TOTAL_TESTS] (cd $FMO_DIR && ./build/nsga2-seq) [rep=$rep]"
+                echo "  [$idx/$TOTAL_TESTS] (cd $FMO_DIR && ./build/nsga2-seq $POP_SIZE $GENERATIONS) [rep=$rep]"
                 idx=$((idx + 1))
             else
                 for w in $WORKERS; do
                     case "$v" in
                         omp)
-                            echo "  [$idx/$TOTAL_TESTS] (cd $FMO_DIR && OMP_NUM_THREADS=$w ./build/nsga2-omp $w) [rep=$rep]"
+                            echo "  [$idx/$TOTAL_TESTS] (cd $FMO_DIR && OMP_NUM_THREADS=$w ./build/nsga2-omp $w $POP_SIZE $GENERATIONS) [rep=$rep]"
                             ;;
                         ff-parfor)
-                            echo "  [$idx/$TOTAL_TESTS] (cd $FMO_DIR && ./build/nsga2-ff $w 0) [rep=$rep]"
+                            echo "  [$idx/$TOTAL_TESTS] (cd $FMO_DIR && ./build/nsga2-ff $w 0 $POP_SIZE $GENERATIONS) [rep=$rep]"
                             ;;
                         ff-farm)
-                            echo "  [$idx/$TOTAL_TESTS] (cd $FMO_DIR && ./build/nsga2-ff $w 1) [rep=$rep]"
+                            echo "  [$idx/$TOTAL_TESTS] (cd $FMO_DIR && ./build/nsga2-ff $w 1 $POP_SIZE $GENERATIONS) [rep=$rep]"
                             ;;
                     esac
                     idx=$((idx + 1))
@@ -337,6 +355,8 @@ collect_system_info() {
         echo "Variants:     ${UNIQUE_VARIANTS[*]}"
         echo "Workers:      $WORKERS"
         echo "Repetitions:  $REPETITIONS"
+        echo "Population:   $POP_SIZE"
+        echo "Generations:  $GENERATIONS"
         echo "Output dir:   $OUTPUT_DIR"
     } > "$info_file"
 }
@@ -397,15 +417,15 @@ run_benchmark() {
     local cmd=()
     case "$variant" in
         seq)
-            cmd=("./build/nsga2-seq")
+            cmd=("./build/nsga2-seq" "$POP_SIZE" "$GENERATIONS")
             ;;
         omp)
-            cmd=("./build/nsga2-omp" "$workers")
+            cmd=("./build/nsga2-omp" "$workers" "$POP_SIZE" "$GENERATIONS")
             ;;
         ff)
             local mod_flag="0"
             if [[ "$mode" == "farm" ]]; then mod_flag="1"; fi
-            cmd=("./build/nsga2-ff" "$workers" "$mod_flag")
+            cmd=("./build/nsga2-ff" "$workers" "$mod_flag" "$POP_SIZE" "$GENERATIONS")
             ;;
     esac
 
@@ -419,6 +439,8 @@ run_benchmark() {
     (
         cd "$FMO_DIR"
         export FMO_POPULATION_OUT="$pop_file"
+        export FMO_POPULATION_SIZE="$POP_SIZE"
+        export FMO_GENERATIONS="$GENERATIONS"
         if [[ "$variant" == "omp" ]]; then
             export OMP_NUM_THREADS="$workers"
         fi
@@ -770,7 +792,9 @@ if [[ "$HAS_SEQ" == false && "$DRY_RUN" == false ]]; then
     (
         cd "$FMO_DIR"
         export FMO_POPULATION_OUT="${POPULATIONS_DIR}/seq_baseline.csv"
-        ./build/nsga2-seq > "${RAW_LOGS_DIR}/seq_baseline.log" 2>&1
+        export FMO_POPULATION_SIZE="$POP_SIZE"
+        export FMO_GENERATIONS="$GENERATIONS"
+        ./build/nsga2-seq "$POP_SIZE" "$GENERATIONS" > "${RAW_LOGS_DIR}/seq_baseline.log" 2>&1
     )
     if [[ -f "${POPULATIONS_DIR}/seq_baseline.csv" ]]; then
         echo -e "${GREEN}✓ Baseline sequenziale salvata in: ${POPULATIONS_DIR}/seq_baseline.csv${NC}\n"

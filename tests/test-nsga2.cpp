@@ -114,11 +114,54 @@ void test_random_population_and_offspring() {
       check(gene >= 0.0 && gene <= 100.0, "offspring genes stay in bounds");
   }
 }
+
+void test_parameterized_population_sizes() {
+  std::mt19937 rng(1234);
+  const std::vector<int> test_sizes = {10, 50, 100, 256, 512};
+  const int chromosome_len = 16;
+
+  for (int N : test_sizes) {
+    Population pop = generateRandomPopulation(N, chromosome_len, rng);
+    check(pop.size() == static_cast<size_t>(N),
+          "generateRandomPopulation creates population of requested size N=" + std::to_string(N));
+
+    // Generazione discendenza con N individui
+    Population offspring = generateOffSpring(pop, 20.0, 20.0, rng);
+    check(offspring.size() == static_cast<size_t>(N),
+          "generateOffSpring preserves population size N=" + std::to_string(N));
+
+    // Fusione (2N)
+    Population combined(pop.size() + offspring.size());
+    combined.addIndividuals(pop.individuals);
+    combined.addIndividuals(offspring.individuals);
+    check(combined.size() == static_cast<size_t>(2 * N),
+          "combined population size is 2N for N=" + std::to_string(N));
+
+    // Assegna fitness fittizie per consentire il sorting
+    for (size_t i = 0; i < combined.size(); ++i) {
+      double f1 = static_cast<double>(i % N);
+      double f2 = static_cast<double>(N - (i % N));
+      combined.getIndividual(i).setFitness(Fitness(f1, f2, (f1 + f2) / 2.0));
+    }
+
+    auto fronts = fastNondominatedSort(combined);
+    check(!fronts.empty(), "fastNondominatedSort produced fronts for N=" + std::to_string(N));
+
+    for (const auto &front : fronts) {
+      assignCrowdingDistance(front, combined);
+    }
+
+    Population truncated = truncatePopulation(combined, fronts, N);
+    check(truncated.size() == static_cast<size_t>(N),
+          "truncatePopulation preserves exact size N=" + std::to_string(N));
+  }
+}
 }
 
 int main() {
   test_dominance(); test_fast_non_dominated_sort(); test_crowding_distance();
   test_truncation_and_elitism(); test_genetic_operators(); test_random_population_and_offspring();
+  test_parameterized_population_sizes();
   if (failures != 0) { std::cerr << failures << " NSGA-II test(s) failed.\n"; return 1; }
   std::cout << "All NSGA-II tests passed.\n";
   return 0;

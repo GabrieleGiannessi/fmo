@@ -109,8 +109,20 @@ void nsga2seq(Population &pop, int num_generations, int population_size, double 
   }
 }
 
+void printUsage(const char *prog_name) {
+  std::cout << "Uso: " << prog_name << " [OPZIONI] [pop_size] [generations] [pop_out_path]\n"
+            << "Esegue l'algoritmo NSGA-II in modalità sequenziale per il problema FMO.\n\n"
+            << "Opzioni:\n"
+            << "  -p, --pop-size <N>       Dimensione della popolazione (default: 256)\n"
+            << "  -g, --generations <G>    Numero di generazioni (default: 50)\n"
+            << "  -o, --output <FILE>      Percorso per salvare la popolazione finale in CSV\n"
+            << "  -h, --help               Mostra questo messaggio di aiuto ed esce\n\n"
+            << "Variabili d'ambiente (usate se non specificate da CLI):\n"
+            << "  FMO_POPULATION_SIZE, FMO_GENERATIONS, FMO_POPULATION_OUT\n";
+}
+
 int main(int argc, char *argv[]) {
-  int population_size = 100;
+  int population_size = 256;
   if (const char *env_p = std::getenv("FMO_POPULATION_SIZE")) {
     int p = std::atoi(env_p);
     if (p > 0) population_size = p;
@@ -122,10 +134,56 @@ int main(int argc, char *argv[]) {
   }
 
   std::string pop_out_path;
-  if (argc > 1) {
-    pop_out_path = argv[1];
-  } else if (const char *env_o = std::getenv("FMO_POPULATION_OUT")) {
+  if (const char *env_o = std::getenv("FMO_POPULATION_OUT")) {
     pop_out_path = env_o;
+  }
+
+  std::vector<std::string> pos_args;
+  for (int i = 1; i < argc; ++i) {
+    std::string arg = argv[i];
+    if (arg == "-h" || arg == "--help") {
+      printUsage(argv[0]);
+      return 0;
+    } else if ((arg == "-p" || arg == "--pop-size" || arg == "--population") && i + 1 < argc) {
+      population_size = std::atoi(argv[++i]);
+    } else if ((arg == "-g" || arg == "--generations") && i + 1 < argc) {
+      num_generations = std::atoi(argv[++i]);
+    } else if ((arg == "-o" || arg == "--output") && i + 1 < argc) {
+      pop_out_path = argv[++i];
+    } else if (!arg.empty() && arg[0] == '-') {
+      std::cerr << "Opzione sconosciuta: " << arg << "\n";
+      printUsage(argv[0]);
+      return 1;
+    } else {
+      pos_args.push_back(arg);
+    }
+  }
+
+  if (!pos_args.empty()) {
+    auto is_number = [](const std::string &s) {
+      return !s.empty() && std::all_of(s.begin(), s.end(), ::isdigit);
+    };
+    int pos_idx = 0;
+    if (is_number(pos_args[pos_idx])) {
+      population_size = std::atoi(pos_args[pos_idx++].c_str());
+      if (pos_idx < static_cast<int>(pos_args.size()) && is_number(pos_args[pos_idx])) {
+        num_generations = std::atoi(pos_args[pos_idx++].c_str());
+      }
+      if (pos_idx < static_cast<int>(pos_args.size())) {
+        pop_out_path = pos_args[pos_idx++];
+      }
+    } else {
+      pop_out_path = pos_args[pos_idx++];
+    }
+  }
+
+  if (population_size <= 0) {
+    std::cerr << "Errore: la dimensione della popolazione deve essere > 0 (fornita: " << population_size << ")\n";
+    return 1;
+  }
+  if (num_generations <= 0) {
+    std::cerr << "Errore: il numero di generazioni deve essere > 0 (fornito: " << num_generations << ")\n";
+    return 1;
   }
 
   std::map<std::string, std::vector<long>> samples;

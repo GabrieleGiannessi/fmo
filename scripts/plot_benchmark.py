@@ -270,7 +270,7 @@ def generate_svg_chart(
     if is_speedup and speedup_mode == "log":
         use_log_y = True
         min_y = 1.0
-        max_y = float(max_x)
+        max_y = max(2.0, float(max_x))
         log2_min_y = 0.0
         log2_max_y = math.log2(max_y)
     elif is_speedup and speedup_mode == "linear":
@@ -285,6 +285,7 @@ def generate_svg_chart(
         use_log_y = True
         min_y = max(1.0, 10 ** math.floor(math.log10(min(all_y))))
         max_y = 10 ** math.ceil(math.log10(max(all_y)))
+        if max_y <= min_y: max_y = min_y * 10.0
         log10_min_y = math.log10(min_y)
         log10_max_y = math.log10(max_y)
     elif is_time:
@@ -301,10 +302,12 @@ def generate_svg_chart(
     def to_py(val_y):
         if use_log_y and is_speedup:
             safe_y = max(val_y, min_y)
-            return pad_top + plot_h - (math.log2(safe_y) - log2_min_y) / (log2_max_y - log2_min_y) * plot_h
+            denom = log2_max_y - log2_min_y
+            return pad_top + plot_h - ((math.log2(safe_y) - log2_min_y) / denom * plot_h if denom != 0 else 0.0)
         elif use_log_y and is_time:
             safe_y = max(val_y, min_y)
-            return pad_top + plot_h - (math.log10(safe_y) - log10_min_y) / (log10_max_y - log10_min_y) * plot_h
+            denom = log10_max_y - log10_min_y
+            return pad_top + plot_h - ((math.log10(safe_y) - log10_min_y) / denom * plot_h if denom != 0 else 0.0)
         else:
             if max_y == min_y:
                 return pad_top + plot_h / 2
