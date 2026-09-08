@@ -110,6 +110,16 @@ public:
   FMODataManager() : fmo_data() {}
 
   /**
+   * @brief Costruttore da FMOData esistente
+   */
+  explicit FMODataManager(const FMOData &data) : fmo_data(data) {}
+
+  /**
+   * @brief Imposta lo stato interno da una struttura FMOData
+   */
+  void setData(const FMOData &data) { fmo_data = data; }
+
+  /**
    * @brief Carica una singola matrice sparsa D da file .mat nello stato interno
    * @param filepath Percorso completo del file .mat
    * @throw std::runtime_error Se il file non può essere aperto o la variabile
@@ -200,6 +210,99 @@ public:
   }
 
   /**
+   * @brief Estrae le sottomatrici dedicate a ciascuna ROI (PTV, Retto, Vescica)
+   *        e precalcola i vettori dei pesi per la dose media.
+   * @details Esegue una singola scansione delle colonne della matrice sparsa D globale,
+   *          ripartendo gli elementi non nulli nelle rispettive sottomatrici.
+   */
+  void extractROISubmatrices() {
+    if (fmo_data.total_voxels <= 0 || fmo_data.total_beamlets <= 0) {
+      throw std::runtime_error(
+          "Impossibile estrarre sottomatrici: matrice D non inizializzata.");
+    }
+
+    const int total_voxels = fmo_data.total_voxels;
+    const int cols = fmo_data.total_beamlets;
+
+    // 1. Tabelle di lookup inverso (O(1)) per mappare gli indici globali dei voxel agli indici locali
+    std::vector<int> map_ptv(total_voxels, -1);
+    for (size_t i = 0; i < fmo_data.ptv_indices.size(); ++i) {
+      map_ptv[fmo_data.ptv_indices[i]] = static_cast<int>(i);
+    }
+
+    std::vector<int> map_rectum(total_voxels, -1);
+    for (size_t i = 0; i < fmo_data.rectum_indices.size(); ++i) {
+      map_rectum[fmo_data.rectum_indices[i]] = static_cast<int>(i);
+    }
+
+    std::vector<int> map_bladder(total_voxels, -1);
+    for (size_t i = 0; i < fmo_data.bladder_indices.size(); ++i) {
+      map_bladder[fmo_data.bladder_indices[i]] = static_cast<int>(i);
+    }
+
+    // 2. Vettori di triplette per costruire le sottomatrici
+    std::vector<Eigen::Triplet<double>> triplets_ptv;
+    std::vector<Eigen::Triplet<double>> triplets_rectum;
+    std::vector<Eigen::Triplet<double>> triplets_bladder;
+
+    // Inizializza i pesi lineari medi
+    fmo_data.rectum_weights.assign(cols, 0.0);
+    fmo_data.bladder_weights.assign(cols, 0.0);
+
+    const double rectum_norm =
+        fmo_data.rectum_indices.empty()
+            ? 1.0
+            : static_cast<double>(fmo_data.rectum_indices.size());
+    const double bladder_norm =
+        fmo_data.bladder_indices.empty()
+            ? 1.0
+            : static_cast<double>(fmo_data.bladder_indices.size());
+
+    // 3. Singola scansione per colonne della matrice CSC D
+    for (int col = 0; col < cols; ++col) {
+      for (Eigen::SparseMatrix<double>::InnerIterator it(fmo_data.D, col); it;
+           ++it) {
+        int r = it.row();
+        double val = it.value();
+
+        if (int sub_r = map_ptv[r]; sub_r >= 0) {
+          triplets_ptv.emplace_back(sub_r, col, val);
+        }
+        if (int sub_r = map_rectum[r]; sub_r >= 0) {
+          triplets_rectum.emplace_back(sub_r, col, val);
+          fmo_data.rectum_weights[col] += val / rectum_norm;
+        }
+        if (int sub_r = map_bladder[r]; sub_r >= 0) {
+          triplets_bladder.emplace_back(sub_r, col, val);
+          fmo_data.bladder_weights[col] += val / bladder_norm;
+        }
+      }
+    }
+
+    fmo_data.global_nonzeros = fmo_data.D.nonZeros();
+
+    // 4. Costruzione e compressione delle sottomatrici sparse
+    fmo_data.D_ptv.resize(fmo_data.ptv_indices.size(), cols);
+    fmo_data.D_ptv.setFromTriplets(triplets_ptv.begin(), triplets_ptv.end());
+    fmo_data.D_ptv.makeCompressed();
+
+    fmo_data.D_rectum.resize(fmo_data.rectum_indices.size(), cols);
+    fmo_data.D_rectum.setFromTriplets(triplets_rectum.begin(),
+                                      triplets_rectum.end());
+    fmo_data.D_rectum.makeCompressed();
+
+    fmo_data.D_bladder.resize(fmo_data.bladder_indices.size(), cols);
+    fmo_data.D_bladder.setFromTriplets(triplets_bladder.begin(),
+                                       triplets_bladder.end());
+    fmo_data.D_bladder.makeCompressed();
+
+    fmo_data.is_preprocessed = true;
+
+    // 5. Deallocazione della matrice globale D (~145 MB di RAM liberati)
+    fmo_data.D = Eigen::SparseMatrix<double>();
+  }
+
+  /**
    * @brief Carica matrice di influenza e ROI necessarie al problema FMO.
    * @param data_directory Directory contenente le matrici D.
    * @param gantry_angles Angoli dei gantry da concatenare.
@@ -211,6 +314,7 @@ public:
                        std::string(ROIFiles::default_directory)) {
     loadGlobalDMatrixFromAngles(data_directory, gantry_angles);
     loadDefaultROIs(roi_directory);
+    extractROISubmatrices();
   }
 
   /**
@@ -341,6 +445,44 @@ public:
   }
 
   /**
+   * @brief Ritorna la sottomatrice PTV
+   */
+  const Eigen::SparseMatrix<double> &getDPTV() const { return fmo_data.D_ptv; }
+
+  /**
+   * @brief Ritorna la sottomatrice Retto
+   */
+  const Eigen::SparseMatrix<double> &getDRectum() const {
+    return fmo_data.D_rectum;
+  }
+
+  /**
+   * @brief Ritorna la sottomatrice Vescica
+   */
+  const Eigen::SparseMatrix<double> &getDBladder() const {
+    return fmo_data.D_bladder;
+  }
+
+  /**
+   * @brief Ritorna i pesi lineari medi precalcolati per il Retto
+   */
+  const std::vector<double> &getRectumWeights() const {
+    return fmo_data.rectum_weights;
+  }
+
+  /**
+   * @brief Ritorna i pesi lineari medi precalcolati per la Vescica
+   */
+  const std::vector<double> &getBladderWeights() const {
+    return fmo_data.bladder_weights;
+  }
+
+  /**
+   * @brief Verifica se le sottomatrici ROI sono state estratte
+   */
+  bool isPreprocessed() const { return fmo_data.is_preprocessed; }
+
+  /**
    * @brief Ritorna l'intera struttura FMOData
    */
   const FMOData &getData() const { return fmo_data; }
@@ -352,13 +494,20 @@ public:
     std::cout << "\n=== FMOData Summary ===" << std::endl;
     std::cout << "Total voxels: " << fmo_data.total_voxels << std::endl;
     std::cout << "Total beamlets: " << fmo_data.total_beamlets << std::endl;
-    std::cout << "Influence matrix size: " << fmo_data.D.rows() << " x "
-              << fmo_data.D.cols() << std::endl;
-    std::cout << "Non-zero elements: " << fmo_data.D.nonZeros() << std::endl;
-    if (fmo_data.D.rows() > 0 && fmo_data.D.cols() > 0) {
+    int nnz = fmo_data.is_preprocessed ? fmo_data.global_nonzeros
+                                       : fmo_data.D.nonZeros();
+    std::cout << "Influence matrix size: " << fmo_data.total_voxels << " x "
+              << fmo_data.total_beamlets
+              << (fmo_data.is_preprocessed
+                      ? " (deallocated after ROI extraction)"
+                      : "")
+              << std::endl;
+    std::cout << "Non-zero elements: " << nnz << std::endl;
+    if (fmo_data.total_voxels > 0 && fmo_data.total_beamlets > 0 && nnz > 0) {
       std::cout << "Matrix density: "
-                << (100.0 * fmo_data.D.nonZeros() /
-                    (fmo_data.D.rows() * fmo_data.D.cols()))
+                << (100.0 * nnz /
+                    (static_cast<double>(fmo_data.total_voxels) *
+                     fmo_data.total_beamlets))
                 << "%" << std::endl;
     }
     std::cout << "PTV indices: " << fmo_data.ptv_indices.size() << std::endl;
@@ -366,5 +515,19 @@ public:
               << std::endl;
     std::cout << "Bladder indices: " << fmo_data.bladder_indices.size()
               << std::endl;
+
+    if (fmo_data.is_preprocessed) {
+      std::cout << "--- Preprocessed ROI Submatrices ---" << std::endl;
+      std::cout << "D_ptv:     " << fmo_data.D_ptv.rows() << " x "
+                << fmo_data.D_ptv.cols()
+                << " (nnz: " << fmo_data.D_ptv.nonZeros() << ")" << std::endl;
+      std::cout << "D_rectum:  " << fmo_data.D_rectum.rows() << " x "
+                << fmo_data.D_rectum.cols()
+                << " (nnz: " << fmo_data.D_rectum.nonZeros() << ")" << std::endl;
+      std::cout << "D_bladder: " << fmo_data.D_bladder.rows() << " x "
+                << fmo_data.D_bladder.cols()
+                << " (nnz: " << fmo_data.D_bladder.nonZeros() << ")"
+                << std::endl;
+    }
   }
 };

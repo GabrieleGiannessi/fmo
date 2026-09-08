@@ -71,6 +71,40 @@ int main() {
                          "bladder");
     manager2.printSummary();
 
+    // Test 7: Estrazione sottomatrici ROI e verifica coerenza
+    std::cout << "\n7. Estrazione sottomatrici ROI..." << std::endl;
+    manager2.extractROISubmatrices();
+    manager2.printSummary();
+
+    if (!manager2.isPreprocessed()) {
+      throw std::runtime_error("Errore: isPreprocessed() dovrebbe essere true.");
+    }
+    if (manager2.getDPTV().rows() != static_cast<int>(manager2.getPTVIndices().size())) {
+      throw std::runtime_error("Errore: dimensione righe D_ptv non coerente.");
+    }
+    if (manager2.getDRectum().rows() != static_cast<int>(manager2.getRectumIndices().size())) {
+      throw std::runtime_error("Errore: dimensione righe D_rectum non coerente.");
+    }
+    if (manager2.getDBladder().rows() != static_cast<int>(manager2.getBladderIndices().size())) {
+      throw std::runtime_error("Errore: dimensione righe D_bladder non coerente.");
+    }
+
+    // Verifica coerenza tra D_rectum e rectum_weights
+    const auto &D_rec = manager2.getDRectum();
+    const auto &w_rec = manager2.getRectumWeights();
+    double norm_rec = static_cast<double>(manager2.getRectumIndices().size());
+    for (int col = 0; col < D_rec.cols(); ++col) {
+      double sum_col = 0.0;
+      for (Eigen::SparseMatrix<double>::InnerIterator it(D_rec, col); it; ++it) {
+        sum_col += it.value();
+      }
+      double expected = sum_col / norm_rec;
+      if (std::abs(expected - w_rec[col]) > 1e-12) {
+        throw std::runtime_error("Errore: discrepanza tra D_rectum e rectum_weights alla colonna " + std::to_string(col));
+      }
+    }
+    std::cout << "✓ Coerenza matematica tra sottomatrici e pesi verificata con successo!" << std::endl;
+
     std::cout << "\n✓ Test completati con successo!" << std::endl;
     return 0;
   } catch (const std::exception &e) {
