@@ -43,6 +43,7 @@ class PlotConfig:
         prefix="",
         suffix="",
         speedup_name="speedup",
+        scalability_name="scalability",
         efficiency_name="efficiency",
         time_name="execution_time",
         stability_name="solution_stability",
@@ -50,15 +51,19 @@ class PlotConfig:
         title_prefix="",
         title_suffix="",
         speedup_title=None,
+        scalability_title=None,
         efficiency_title=None,
         time_title=None,
         stability_title=None,
         theme="light",
+        amdahl_f=None,
+        show_amdahl=True,
     ):
         self.output_dir = output_dir or "."
         self.prefix = prefix
         self.suffix = suffix
         self.speedup_name = speedup_name
+        self.scalability_name = scalability_name
         self.efficiency_name = efficiency_name
         self.time_name = time_name
         self.stability_name = stability_name
@@ -66,10 +71,13 @@ class PlotConfig:
         self.title_prefix = title_prefix
         self.title_suffix = title_suffix
         self.speedup_title = speedup_title
+        self.scalability_title = scalability_title
         self.efficiency_title = efficiency_title
         self.time_title = time_title
         self.stability_title = stability_title
         self.theme = theme
+        self.amdahl_f = amdahl_f
+        self.show_amdahl = show_amdahl
 
     def file(self, base_name, ext):
         if not ext.startswith("."):
@@ -103,6 +111,35 @@ def find_latest_results_dir(base_dir):
         return None
     runs.sort(key=os.path.getmtime, reverse=True)
     return runs[0]
+
+
+def compute_amdahl_fraction(summary_rows, target_phase="nsga2_total"):
+    """
+    Calcola la frazione non parallelizzabile (f) secondo la Legge di Amdahl dai dati del baseline sequenziale.
+    Restituisce None se non ci sono dati sequenziali sufficienti.
+    """
+    seq_map = {
+        r["phase"]: float(r["avg_mean_ms"])
+        for r in summary_rows
+        if r.get("variant") == "seq"
+    }
+    if not seq_map:
+        return None
+
+    if target_phase == "nsga2_total" and "nsga2_total" in seq_map:
+        t_total = seq_map["nsga2_total"]
+        t_init_eval = seq_map.get("initial_evaluation", 0.0)
+        t_pop_eval = seq_map.get("population_evaluation", 0.0)
+        t_par = t_init_eval + 50 * t_pop_eval
+        if t_total > 0 and 0 < t_par < t_total:
+            return (t_total - t_par) / t_total
+    elif target_phase == "generation_total" and "generation_total" in seq_map:
+        t_gen = seq_map["generation_total"]
+        t_pop_eval = seq_map.get("population_evaluation", 0.0)
+        if t_gen > 0 and 0 < t_pop_eval < t_gen:
+            return (t_gen - t_pop_eval) / t_gen
+
+    return None
 
 
 def load_data(target_path):
@@ -202,7 +239,7 @@ def load_data(target_path):
     return summary_rows, raw_rows, stab_rows, results_dir
 
 
-def print_terminal_summary(summary_rows, stab_rows=None):
+def print_terminal_summary(summary_rows, stab_rows=None, config=None):
     if not summary_rows and not stab_rows:
         print("Nessun dato di riepilogo disponibile.")
         return
@@ -211,13 +248,13 @@ def print_terminal_summary(summary_rows, stab_rows=None):
         phases = sorted({r["phase"] for r in summary_rows})
         target_phase = "nsga2_total" if "nsga2_total" in phases else phases[0]
 
-        print("\n" + "=" * 105)
+        print("\n" + "=" * 107)
         print(f"  RIEPILOGO PRESTAZIONI (Fase: {target_phase})")
-        print("=" * 105)
+        print("=" * 107)
         print(
-            f"{'VARIANTE':<14} {'MODALITÀ':<14} {'WORKERS':<9} {'TEMPO MEDIO (s)':<18} {'SPEEDUP (seq)':<16} {'SPEEDUP (T1)':<16} {'EFFICIENZA':<14}"
+            f"{'VARIANTE':<14} {'MODALITÀ':<14} {'WORKERS':<9} {'TEMPO MEDIO (s)':<18} {'SPEEDUP (seq)':<16} {'SCALABILITÀ (T1)':<18} {'EFFICIENZA':<14}"
         )
-        print("-" * 105)
+        print("-" * 107)
 
         def sort_key(r):
             return (r["variant"], r["mode"], int(r["workers"]))
@@ -240,10 +277,26 @@ def print_terminal_summary(summary_rows, stab_rows=None):
             )
 
             print(
-                f"{variant:<14} {mode:<14} {workers:<9} {mean_s:<18.3f} {s_seq:<16} {s_t1:<16} {eff:<14}"
+                f"{variant:<14} {mode:<14} {workers:<9} {mean_s:<18.3f} {s_seq:<16} {s_t1:<18} {eff:<14}"
             )
 
-        print("=" * 105 + "\n")
+        amdahl_f = None
+        if config is not None and getattr(config, "show_amdahl", True):
+            if getattr(config, "amdahl_f", None) is not None:
+                amdahl_f = config.amdahl_f
+            else:
+                amdahl_f = compute_amdahl_fraction(summary_rows, target_phase)
+        elif config is None:
+            amdahl_f = compute_amdahl_fraction(summary_rows, target_phase)
+
+        if amdahl_f is not None and 0.0 < amdahl_f < 1.0:
+            print("-" * 107)
+            s_max_amd = 1.0 / amdahl_f
+            print(
+                f"  [Legge di Amdahl] Frazione seriale (f): {amdahl_f * 100:.2f}% | Limite Speedup teorico asintotico (1/f): {s_max_amd:.2f}x"
+            )
+
+        print("=" * 107 + "\n")
 
     if stab_rows:
         print("=" * 110)
@@ -278,6 +331,7 @@ def generate_svg_chart(
     speedup_mode="log",
     time_mode="linear",
     theme="light",
+    amdahl_f=None,
 ):
     """
     Genera un grafico vettoriale SVG professionale e pulito, pronto per report e tesi.
@@ -507,6 +561,37 @@ def generate_svg_chart(
                 svg.append(
                     f'<polyline fill="none" stroke="{ideal_color}" stroke-width="1.6" stroke-dasharray="5,4" points="{poly}" />'
                 )
+
+        if amdahl_f is not None and 0.0 < amdahl_f < 1.0:
+            amdahl_color = "#e36209" if theme == "light" else "#f0883e"
+            step_count = 60
+            if use_log_x and min_x > 0:
+                xs = [
+                    2 ** (log2_min_x + i * (log2_max_x - log2_min_x) / step_count)
+                    for i in range(step_count + 1)
+                ]
+            else:
+                xs = [
+                    min_x + i * (max_x - min_x) / step_count
+                    for i in range(step_count + 1)
+                ]
+
+            amdahl_pts = []
+            for cur_x in xs:
+                if cur_x <= 0:
+                    continue
+                s_amd = 1.0 / (amdahl_f + (1.0 - amdahl_f) / cur_x)
+                if not use_log_y:
+                    s_amd_clamped = min(s_amd, max_y)
+                    amdahl_pts.append((to_px(cur_x), to_py(s_amd_clamped)))
+                else:
+                    if s_amd >= min_y:
+                        amdahl_pts.append((to_px(cur_x), to_py(min(s_amd, max_y))))
+            if len(amdahl_pts) > 1:
+                poly_amd = " ".join([f"{x:.1f},{y:.1f}" for x, y in amdahl_pts])
+                svg.append(
+                    f'<polyline fill="none" stroke="{amdahl_color}" stroke-width="1.8" stroke-dasharray="4,3" points="{poly_amd}" />'
+                )
     elif is_efficiency:
         py_100 = to_py(100.0)
         svg.append(
@@ -552,9 +637,15 @@ def generate_svg_chart(
         legend_entries.append((label, color, shape))
 
     # Box Legenda
-    legend_h = (
-        len(legend_entries) * 24 + (24 if (is_speedup or is_efficiency) else 10) + 12
-    )
+    has_amdahl = is_speedup and (amdahl_f is not None and 0.0 < amdahl_f < 1.0)
+    extra_h = 0
+    if is_speedup:
+        extra_h = 46 if has_amdahl else 24
+    elif is_efficiency:
+        extra_h = 24
+    else:
+        extra_h = 10
+    legend_h = len(legend_entries) * 22 + extra_h + 12
     legend_x = pad_left + plot_w + 14
     legend_y = pad_top
     svg.append(
@@ -599,6 +690,18 @@ def generate_svg_chart(
         svg.append(
             f'<text x="{legend_x + 32}" y="{cur_y}" fill="{ideal_color}" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="500">Ideal (S = p)</text>'
         )
+        cur_y += 22
+        if has_amdahl:
+            amdahl_color = "#e36209" if theme == "light" else "#f0883e"
+            icon_cy = cur_y - 4
+            svg.append(
+                f'<line x1="{icon_cx - 8}" y1="{icon_cy}" x2="{icon_cx + 8}" y2="{icon_cy}" stroke="{amdahl_color}" stroke-dasharray="4,3" stroke-width="1.8" />'
+            )
+            pct_label = f"{amdahl_f * 100:.2f}%"
+            svg.append(
+                f'<text x="{legend_x + 32}" y="{cur_y}" fill="{amdahl_color}" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="500">Amdahl (f={pct_label})</text>'
+            )
+            cur_y += 22
     elif is_efficiency:
         icon_cx = legend_x + 16
         icon_cy = cur_y - 4
@@ -641,6 +744,7 @@ def generate_all_svg_charts(summary_rows, results_dir, stab_rows=None, theme="li
     rows = [r for r in summary_rows if r["phase"] == target_phase]
 
     speedup_series = defaultdict(list)
+    scalability_series = defaultdict(list)
     eff_series = defaultdict(list)
     time_series = defaultdict(list)
 
@@ -648,42 +752,83 @@ def generate_all_svg_charts(summary_rows, results_dir, stab_rows=None, theme="li
         label = f"{r['variant']} ({r['mode']})"
         w = int(r["workers"])
         time_s = float(r["avg_mean_ms"]) / 1000.0
+        s_seq = float(r["speedup_seq"]) if r.get("speedup_seq") else None
         s_t1 = float(r["speedup_t1"]) if r.get("speedup_t1") else None
         eff_t1 = float(r["efficiency_t1"]) * 100.0 if r.get("efficiency_t1") else None
 
         time_series[label].append((w, time_s))
+        if s_seq is not None:
+            speedup_series[label].append((w, s_seq))
         if s_t1 is not None:
-            speedup_series[label].append((w, s_t1))
+            scalability_series[label].append((w, s_t1))
         if eff_t1 is not None:
             eff_series[label].append((w, eff_t1))
 
-    # 1. Speedup principale (Log-Log per rappresentazione standard HPC)
-    speedup_title = config.get_title(f"Speedup vs Cores ({target_phase})", config.speedup_title)
+    amdahl_f = None
+    if getattr(config, "show_amdahl", True):
+        if getattr(config, "amdahl_f", None) is not None:
+            amdahl_f = config.amdahl_f
+        else:
+            amdahl_f = compute_amdahl_fraction(summary_rows, target_phase)
+
+    # 1. Speedup Assoluto (vs baseline sequenziale pura T_seq)
+    speedup_title = config.get_title(f"Speedup Assoluto vs Cores ({target_phase})", config.speedup_title)
     generate_svg_chart(
         speedup_title,
         "Cores / Workers",
-        "Speedup (T1 / Tp)",
+        "Speedup Assoluto (Tseq / Tp)",
         speedup_series,
         config.path(config.speedup_name, "svg"),
         is_speedup=True,
         speedup_mode="log",
         theme=theme,
+        amdahl_f=amdahl_f,
     )
 
-    # 2. Speedup scala lineare (alternativa per report)
     speedup_linear_title = config.get_title(
-        f"Speedup vs Cores - Scala Lineare ({target_phase})",
+        f"Speedup Assoluto vs Cores - Scala Lineare ({target_phase})",
         f"{config.speedup_title} (Scala Lineare)" if config.speedup_title else None,
     )
     generate_svg_chart(
         speedup_linear_title,
         "Cores / Workers",
-        "Speedup (T1 / Tp)",
+        "Speedup Assoluto (Tseq / Tp)",
         speedup_series,
         config.path(f"{config.speedup_name}_linear", "svg"),
         is_speedup=True,
         speedup_mode="linear",
         theme=theme,
+        amdahl_f=amdahl_f,
+    )
+
+    # 2. Scalabilità Forte (Relativa a 1 worker T1: scalab(n) = T1 / Tn)
+    scalability_title = config.get_title(f"Scalabilità vs Cores ({target_phase})", config.scalability_title)
+    generate_svg_chart(
+        scalability_title,
+        "Cores / Workers",
+        "Scalabilità (T1 / Tp)",
+        scalability_series,
+        config.path(config.scalability_name, "svg"),
+        is_speedup=True,
+        speedup_mode="log",
+        theme=theme,
+        amdahl_f=amdahl_f,
+    )
+
+    scalability_linear_title = config.get_title(
+        f"Scalabilità vs Cores - Scala Lineare ({target_phase})",
+        f"{config.scalability_title} (Scala Lineare)" if config.scalability_title else None,
+    )
+    generate_svg_chart(
+        scalability_linear_title,
+        "Cores / Workers",
+        "Scalabilità (T1 / Tp)",
+        scalability_series,
+        config.path(f"{config.scalability_name}_linear", "svg"),
+        is_speedup=True,
+        speedup_mode="linear",
+        theme=theme,
+        amdahl_f=amdahl_f,
     )
 
     # 3. Efficienza Parallela
@@ -790,8 +935,12 @@ def generate_html_report(summary_rows, raw_rows, results_dir, stab_rows=None, co
             sys_info = f.read()
 
     chart_payload = {}
+    amdahl_payload = {}
     for phase, series_dict in phase_data.items():
         chart_payload[phase] = {}
+        f_val = compute_amdahl_fraction(summary_rows, phase)
+        if f_val is not None and 0.0 < f_val < 1.0:
+            amdahl_payload[phase] = round(f_val, 6)
         for label, w_dict in series_dict.items():
             sorted_w = sorted(w_dict.keys())
             chart_payload[phase][label] = {
@@ -871,6 +1020,8 @@ def generate_html_report(summary_rows, raw_rows, results_dir, stab_rows=None, co
 
     speedup_svg = config.file(config.speedup_name, "svg")
     speedup_lin_svg = config.file(f"{config.speedup_name}_linear", "svg")
+    scalability_svg = config.file(config.scalability_name, "svg")
+    scalability_lin_svg = config.file(f"{config.scalability_name}_linear", "svg")
     eff_svg = config.file(config.efficiency_name, "svg")
     time_svg = config.file(config.time_name, "svg")
     time_log_svg = config.file(f"{config.time_name}_log", "svg")
@@ -1013,8 +1164,10 @@ def generate_html_report(summary_rows, raw_rows, results_dir, stab_rows=None, co
 
         <div class="links-bar">
             <strong>Grafici Vettoriali e Dati:</strong>
-            <a href="{speedup_svg}" target="_blank">📈 {speedup_svg} (log)</a>
-            <a href="{speedup_lin_svg}" target="_blank">📈 {speedup_lin_svg}</a>
+            <a href="{speedup_svg}" target="_blank">🚀 {speedup_svg} (log)</a>
+            <a href="{speedup_lin_svg}" target="_blank">🚀 {speedup_lin_svg}</a>
+            <a href="{scalability_svg}" target="_blank">📈 {scalability_svg} (log)</a>
+            <a href="{scalability_lin_svg}" target="_blank">📈 {scalability_lin_svg}</a>
             <a href="{eff_svg}" target="_blank">⚡ {eff_svg}</a>
             <a href="{time_svg}" target="_blank">⏱️ {time_svg}</a>
             <a href="{time_log_svg}" target="_blank">⏱️ {time_log_svg}</a>
@@ -1028,13 +1181,19 @@ def generate_html_report(summary_rows, raw_rows, results_dir, stab_rows=None, co
 
         <div class="grid">
             <div class="card">
-                <h2>📈 Speedup vs Cores (S = T1 / Tp)</h2>
+                <h2>📈 Scalabilità vs Cores (Scalab = T1 / Tp)</h2>
+                <div class="chart-container">
+                    <canvas id="scalabilityChart"></canvas>
+                </div>
+            </div>
+            <div class="card">
+                <h2>🚀 Speedup Assoluto vs Cores (S = Tseq / Tp)</h2>
                 <div class="chart-container">
                     <canvas id="speedupChart"></canvas>
                 </div>
             </div>
             <div class="card">
-                <h2>⚡ Efficienza Parallela vs Cores (E = S / p)</h2>
+                <h2>⚡ Efficienza Parallela vs Cores (E = Scalab / p)</h2>
                 <div class="chart-container">
                     <canvas id="efficiencyChart"></canvas>
                 </div>
@@ -1045,23 +1204,25 @@ def generate_html_report(summary_rows, raw_rows, results_dir, stab_rows=None, co
                     <canvas id="timeChart"></canvas>
                 </div>
             </div>
-            <div class="card">
-                <h2>📊 Tabella di Riepilogo Prestazioni</h2>
-                <div style="overflow-x: auto; max-height: 360px;">
-                    <table id="summaryTable">
-                        <thead>
-                            <tr>
-                                <th>Variante</th>
-                                <th>Modo</th>
-                                <th>Cores</th>
-                                <th>Tempo (s)</th>
-                                <th>Speedup</th>
-                                <th>Efficienza</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tableBody"></tbody>
-                    </table>
-                </div>
+        </div>
+
+        <div class="card" style="margin-bottom: 32px;">
+            <h2>📊 Tabella di Riepilogo Prestazioni</h2>
+            <div style="overflow-x: auto; max-height: 380px;">
+                <table id="summaryTable">
+                    <thead>
+                        <tr>
+                            <th>Variante</th>
+                            <th>Modo</th>
+                            <th>Cores</th>
+                            <th>Tempo (s)</th>
+                            <th>Speedup Ass. (Tseq/Tp)</th>
+                            <th>Scalabilità (T1/Tp)</th>
+                            <th>Efficienza</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
             </div>
         </div>
 
@@ -1075,6 +1236,7 @@ def generate_html_report(summary_rows, raw_rows, results_dir, stab_rows=None, co
 
     <script>
         const chartData = {json.dumps(chart_payload)};
+        const amdahlData = {json.dumps(amdahl_payload)};
         const phases = Object.keys(chartData);
 
         const selectElem = document.getElementById('phaseSelect');
@@ -1086,7 +1248,7 @@ def generate_html_report(summary_rows, raw_rows, results_dir, stab_rows=None, co
             selectElem.appendChild(opt);
         }});
 
-        let speedupChart, efficiencyChart, timeChart;
+        let scalabilityChart, speedupChart, efficiencyChart, timeChart;
         const colors = [
             '#58a6ff', '#3fb950', '#f0883e', '#d29922', '#bc8cff', '#79c0ff'
         ];
@@ -1099,14 +1261,56 @@ def generate_html_report(summary_rows, raw_rows, results_dir, stab_rows=None, co
             Object.values(phaseObj).forEach(s => s.workers.forEach(w => allWorkers.add(w)));
             const sortedWorkers = Array.from(allWorkers).sort((a,b) => a - b);
 
-            const speedupDatasets = [];
+            // 1. Scalabilità (T1 / Tp)
+            const scalabilityDatasets = [];
             let colorIdx = 0;
+            for (const [label, data] of Object.entries(phaseObj)) {{
+                const color = colors[colorIdx % colors.length];
+                colorIdx++;
+                scalabilityDatasets.push({{
+                    label: label,
+                    data: data.workers.map((w, i) => ({{ x: w, y: data.speedup_t1[i] }})),
+                    borderColor: color,
+                    backgroundColor: color,
+                    tension: 0.1,
+                    pointRadius: 4
+                }});
+            }}
+
+            scalabilityDatasets.push({{
+                label: 'Ideal (Lineare: S=p)',
+                data: sortedWorkers.map(w => ({{ x: w, y: w }})),
+                borderColor: '#8b949e',
+                borderDash: [5, 5],
+                pointRadius: 0,
+                fill: false
+            }});
+
+            if (amdahlData && amdahlData[currentPhase]) {{
+                const fVal = amdahlData[currentPhase];
+                const pctStr = (fVal * 100).toFixed(2);
+                scalabilityDatasets.push({{
+                    label: `Amdahl (f=${{pctStr}}%)`,
+                    data: sortedWorkers.map(w => ({{
+                        x: w,
+                        y: +(1.0 / (fVal + (1.0 - fVal) / w)).toFixed(2)
+                    }})),
+                    borderColor: '#f0883e',
+                    borderDash: [3, 3],
+                    pointRadius: 0,
+                    fill: false
+                }});
+            }}
+
+            // 2. Speedup Assoluto (Tseq / Tp)
+            const speedupDatasets = [];
+            colorIdx = 0;
             for (const [label, data] of Object.entries(phaseObj)) {{
                 const color = colors[colorIdx % colors.length];
                 colorIdx++;
                 speedupDatasets.push({{
                     label: label,
-                    data: data.workers.map((w, i) => ({{ x: w, y: data.speedup_t1[i] }})),
+                    data: data.workers.map((w, i) => ({{ x: w, y: data.speedup_seq[i] }})),
                     borderColor: color,
                     backgroundColor: color,
                     tension: 0.1,
@@ -1123,6 +1327,23 @@ def generate_html_report(summary_rows, raw_rows, results_dir, stab_rows=None, co
                 fill: false
             }});
 
+            if (amdahlData && amdahlData[currentPhase]) {{
+                const fVal = amdahlData[currentPhase];
+                const pctStr = (fVal * 100).toFixed(2);
+                speedupDatasets.push({{
+                    label: `Amdahl (f=${{pctStr}}%)`,
+                    data: sortedWorkers.map(w => ({{
+                        x: w,
+                        y: +(1.0 / (fVal + (1.0 - fVal) / w)).toFixed(2)
+                    }})),
+                    borderColor: '#f0883e',
+                    borderDash: [3, 3],
+                    pointRadius: 0,
+                    fill: false
+                }});
+            }}
+
+            // 3. Efficienza Parallela
             const effDatasets = [];
             colorIdx = 0;
             for (const [label, data] of Object.entries(phaseObj)) {{
@@ -1146,6 +1367,7 @@ def generate_html_report(summary_rows, raw_rows, results_dir, stab_rows=None, co
                 fill: false
             }});
 
+            // 4. Completion Time
             const timeDatasets = [];
             colorIdx = 0;
             for (const [label, data] of Object.entries(phaseObj)) {{
@@ -1161,6 +1383,21 @@ def generate_html_report(summary_rows, raw_rows, results_dir, stab_rows=None, co
                 }});
             }}
 
+            if (scalabilityChart) scalabilityChart.destroy();
+            scalabilityChart = new Chart(document.getElementById('scalabilityChart'), {{
+                type: 'line',
+                data: {{ datasets: scalabilityDatasets }},
+                options: {{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {{
+                        x: {{ type: 'linear', title: {{ display: true, text: 'Cores / Workers', color: '#8b949e' }}, grid: {{ color: '#30363d' }} }},
+                        y: {{ type: 'linear', title: {{ display: true, text: 'Scalabilità (T1 / Tp)', color: '#8b949e' }}, grid: {{ color: '#30363d' }} }}
+                    }},
+                    plugins: {{ legend: {{ labels: {{ color: '#c9d1d9' }} }} }}
+                }}
+            }});
+
             if (speedupChart) speedupChart.destroy();
             speedupChart = new Chart(document.getElementById('speedupChart'), {{
                 type: 'line',
@@ -1170,7 +1407,7 @@ def generate_html_report(summary_rows, raw_rows, results_dir, stab_rows=None, co
                     maintainAspectRatio: false,
                     scales: {{
                         x: {{ type: 'linear', title: {{ display: true, text: 'Cores / Workers', color: '#8b949e' }}, grid: {{ color: '#30363d' }} }},
-                        y: {{ type: 'linear', title: {{ display: true, text: 'Speedup', color: '#8b949e' }}, grid: {{ color: '#30363d' }} }}
+                        y: {{ type: 'linear', title: {{ display: true, text: 'Speedup Assoluto (Tseq / Tp)', color: '#8b949e' }}, grid: {{ color: '#30363d' }} }}
                     }},
                     plugins: {{ legend: {{ labels: {{ color: '#c9d1d9' }} }} }}
                 }}
@@ -1215,7 +1452,8 @@ def generate_html_report(summary_rows, raw_rows, results_dir, stab_rows=None, co
                     const vName = parts[0];
                     const vMode = parts[1] || '-';
                     const tVal = data.times[i] !== null ? data.times[i].toFixed(3) : '-';
-                    const sVal = data.speedup_t1[i] !== null ? data.speedup_t1[i].toFixed(2) + 'x' : '-';
+                    const sSeqVal = data.speedup_seq[i] !== null ? data.speedup_seq[i].toFixed(2) + 'x' : '-';
+                    const sT1Val = data.speedup_t1[i] !== null ? data.speedup_t1[i].toFixed(2) + 'x' : '-';
                     const eVal = data.efficiency_t1[i] !== null ? data.efficiency_t1[i].toFixed(1) + '%' : '-';
 
                     tr.innerHTML = `
@@ -1223,7 +1461,8 @@ def generate_html_report(summary_rows, raw_rows, results_dir, stab_rows=None, co
                         <td>${{vMode}}</td>
                         <td><span class="badge badge-primary">${{w}}</span></td>
                         <td>${{tVal}} s</td>
-                        <td>${{sVal}}</td>
+                        <td>${{sSeqVal}}</td>
+                        <td>${{sT1Val}}</td>
                         <td>${{eVal}}</td>
                     `;
                     tbody.appendChild(tr);
@@ -1273,6 +1512,7 @@ def generate_matplotlib_figures(summary_rows, results_dir, config=None):
                 "w": int(r["workers"]),
                 "time_s": float(r["avg_mean_ms"]) / 1000.0,
                 "s_t1": float(r["speedup_t1"]) if r.get("speedup_t1") else None,
+                "s_seq": float(r["speedup_seq"]) if r.get("speedup_seq") else None,
                 "eff_t1": float(r["efficiency_t1"]) * 100.0
                 if r.get("efficiency_t1")
                 else None,
@@ -1284,7 +1524,57 @@ def generate_matplotlib_figures(summary_rows, results_dir, config=None):
 
     all_workers = sorted({x["w"] for s in series.values() for x in s})
 
-    # 1. Speedup PNG
+    amdahl_f = None
+    if getattr(config, "show_amdahl", True):
+        if getattr(config, "amdahl_f", None) is not None:
+            amdahl_f = config.amdahl_f
+        else:
+            amdahl_f = compute_amdahl_fraction(summary_rows, target_phase)
+
+    # 1. Speedup Assoluto PNG (T_seq / T_p)
+    fig, ax = plt.subplots(figsize=(8, 6), dpi=300)
+    for label, items in series.items():
+        ws = [x["w"] for x in items if x["s_seq"] is not None]
+        ss = [x["s_seq"] for x in items if x["s_seq"] is not None]
+        if ws:
+            ax.plot(ws, ss, marker="o", label=label, linewidth=2)
+
+    if all_workers:
+        ax.plot(
+            all_workers,
+            all_workers,
+            "--",
+            color="gray",
+            label="Ideale (S = p)",
+            linewidth=1.5,
+        )
+        if amdahl_f is not None and 0.0 < amdahl_f < 1.0:
+            step_count = 100
+            min_w, max_w = min(all_workers), max(all_workers)
+            dense_w = [min_w + i * (max_w - min_w) / step_count for i in range(step_count + 1)]
+            amdahl_vals = [1.0 / (amdahl_f + (1.0 - amdahl_f) / w) for w in dense_w]
+            ax.plot(
+                dense_w,
+                amdahl_vals,
+                ":",
+                color="#e36209",
+                label=f"Amdahl (f={amdahl_f*100:.2f}%)",
+                linewidth=1.8,
+            )
+
+    ax.set_xlabel("Cores / Workers", fontsize=12)
+    ax.set_ylabel("Speedup Assoluto (Tseq / Tp)", fontsize=12)
+    speedup_title = config.get_title(
+        f"Speedup Assoluto vs Cores ({target_phase})", config.speedup_title
+    )
+    ax.set_title(speedup_title, fontsize=14, fontweight="bold")
+    ax.grid(True, linestyle="--", alpha=0.6)
+    ax.legend(fontsize=11)
+    fig.tight_layout()
+    fig.savefig(config.path(config.speedup_name, "png"))
+    plt.close(fig)
+
+    # 1b. Scalabilità PNG (T_1 / T_p)
     fig, ax = plt.subplots(figsize=(8, 6), dpi=300)
     for label, items in series.items():
         ws = [x["w"] for x in items if x["s_t1"] is not None]
@@ -1298,20 +1588,33 @@ def generate_matplotlib_figures(summary_rows, results_dir, config=None):
             all_workers,
             "--",
             color="gray",
-            label="Ideal (S = p)",
+            label="Ideale (Scalab = p)",
             linewidth=1.5,
         )
+        if amdahl_f is not None and 0.0 < amdahl_f < 1.0:
+            step_count = 100
+            min_w, max_w = min(all_workers), max(all_workers)
+            dense_w = [min_w + i * (max_w - min_w) / step_count for i in range(step_count + 1)]
+            amdahl_vals = [1.0 / (amdahl_f + (1.0 - amdahl_f) / w) for w in dense_w]
+            ax.plot(
+                dense_w,
+                amdahl_vals,
+                ":",
+                color="#e36209",
+                label=f"Amdahl (f={amdahl_f*100:.2f}%)",
+                linewidth=1.8,
+            )
 
     ax.set_xlabel("Cores / Workers", fontsize=12)
-    ax.set_ylabel("Speedup (T1 / Tp)", fontsize=12)
-    speedup_title = config.get_title(
-        f"Speedup vs Cores ({target_phase})", config.speedup_title
+    ax.set_ylabel("Scalabilità (T1 / Tp)", fontsize=12)
+    scalability_title = config.get_title(
+        f"Scalabilità vs Cores ({target_phase})", config.scalability_title
     )
-    ax.set_title(speedup_title, fontsize=14, fontweight="bold")
+    ax.set_title(scalability_title, fontsize=14, fontweight="bold")
     ax.grid(True, linestyle="--", alpha=0.6)
     ax.legend(fontsize=11)
     fig.tight_layout()
-    fig.savefig(config.path(config.speedup_name, "png"))
+    fig.savefig(config.path(config.scalability_name, "png"))
     plt.close(fig)
 
     # 2. Efficienza PNG
@@ -1433,6 +1736,11 @@ def main():
         help="Nome base file per speedup (default: 'speedup')",
     )
     naming.add_argument(
+        "--scalability-name",
+        default="scalability",
+        help="Nome base file per scalabilità (default: 'scalability')",
+    )
+    naming.add_argument(
         "--efficiency-name",
         default="efficiency",
         help="Nome base file per efficienza (default: 'efficiency')",
@@ -1471,6 +1779,11 @@ def main():
         help="Titolo personalizzato per il grafico dello speedup",
     )
     titles.add_argument(
+        "--scalability-title",
+        default=None,
+        help="Titolo personalizzato per il grafico della scalabilità",
+    )
+    titles.add_argument(
         "--efficiency-title",
         default=None,
         help="Titolo personalizzato per il grafico dell'efficienza",
@@ -1486,7 +1799,27 @@ def main():
         help="Titolo personalizzato per il grafico di stabilità",
     )
 
+    # Amdahl group
+    amdahl_grp = parser.add_argument_group("Analisi Teorica di Amdahl")
+    amdahl_grp.add_argument(
+        "--amdahl-f",
+        "--amhdahl-f",
+        dest="amdahl_f",
+        type=float,
+        default=None,
+        help="Frazione seriale non parallelizzabile (f) per il limite di Amdahl (es. 0.0106 oppure 1.06%%). Se omessa, viene calcolata automaticamente dal baseline sequenziale.",
+    )
+    amdahl_grp.add_argument(
+        "--no-amdahl",
+        action="store_true",
+        help="Disabilita il tracciamento della curva teorica di Amdahl nei grafici di speedup.",
+    )
+
     args = parser.parse_args()
+
+    if args.amdahl_f is not None and args.amdahl_f > 1.0:
+        # Se l'utente ha inserito una percentuale (es. 1.04 o 1.06 anziché 0.0104 o 0.0106), normalizza in frazione [0, 1]
+        args.amdahl_f = args.amdahl_f / 100.0
 
     target = args.target
     if not target:
@@ -1505,6 +1838,7 @@ def main():
         prefix=args.prefix,
         suffix=args.suffix,
         speedup_name=args.speedup_name,
+        scalability_name=args.scalability_name,
         efficiency_name=args.efficiency_name,
         time_name=args.time_name,
         stability_name=args.stability_name,
@@ -1512,10 +1846,13 @@ def main():
         title_prefix=args.title_prefix,
         title_suffix=args.title_suffix,
         speedup_title=args.speedup_title,
+        scalability_title=args.scalability_title,
         efficiency_title=args.efficiency_title,
         time_title=args.time_title,
         stability_title=args.stability_title,
         theme=args.theme,
+        amdahl_f=args.amdahl_f,
+        show_amdahl=(not args.no_amdahl),
     )
 
     print(f"Caricamento dati da: {target}")
@@ -1523,7 +1860,7 @@ def main():
     if config.prefix or config.suffix:
         print(f"Pattern nomi file: {config.prefix}<nome>{config.suffix}.svg")
 
-    print_terminal_summary(summary_rows, stab_rows)
+    print_terminal_summary(summary_rows, stab_rows, config=config)
     generate_all_svg_charts(
         summary_rows, results_dir, stab_rows, theme=config.theme, config=config
     )
