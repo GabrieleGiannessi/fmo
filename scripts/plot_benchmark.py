@@ -13,29 +13,92 @@ Uso:
   python3 plot_benchmark.py logs/
 """
 
-import sys
-import os
+import argparse
 import csv
 import json
 import math
+import os
+import sys
 from collections import defaultdict
 
 # Controllo presenza matplotlib (opzionale)
 HAS_MATPLOTLIB = False
 try:
     import matplotlib
-    matplotlib.use('Agg')
+
+    matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+
     HAS_MATPLOTLIB = True
 except ImportError:
     pass
+
+
+class PlotConfig:
+    """Configurazione per nomi dei file, percorsi e titoli dei grafici."""
+
+    def __init__(
+        self,
+        output_dir=None,
+        prefix="",
+        suffix="",
+        speedup_name="speedup",
+        efficiency_name="efficiency",
+        time_name="execution_time",
+        stability_name="solution_stability",
+        report_name="report",
+        title_prefix="",
+        title_suffix="",
+        speedup_title=None,
+        efficiency_title=None,
+        time_title=None,
+        stability_title=None,
+        theme="light",
+    ):
+        self.output_dir = output_dir or "."
+        self.prefix = prefix
+        self.suffix = suffix
+        self.speedup_name = speedup_name
+        self.efficiency_name = efficiency_name
+        self.time_name = time_name
+        self.stability_name = stability_name
+        self.report_name = report_name
+        self.title_prefix = title_prefix
+        self.title_suffix = title_suffix
+        self.speedup_title = speedup_title
+        self.efficiency_title = efficiency_title
+        self.time_title = time_title
+        self.stability_title = stability_title
+        self.theme = theme
+
+    def file(self, base_name, ext):
+        if not ext.startswith("."):
+            ext = "." + ext
+        return f"{self.prefix}{base_name}{self.suffix}{ext}"
+
+    def path(self, base_name, ext):
+        return os.path.join(self.output_dir, self.file(base_name, ext))
+
+    def get_title(self, default_title, override=None):
+        if override:
+            return override
+        res = default_title
+        if self.title_prefix:
+            res = f"{self.title_prefix}{res}"
+        if self.title_suffix:
+            res = f"{res}{self.title_suffix}"
+        return res
 
 
 def find_latest_results_dir(base_dir):
     results_dir = os.path.join(base_dir, "results")
     if not os.path.exists(results_dir):
         return None
-    runs = [os.path.join(results_dir, d) for d in os.listdir(results_dir) if d.startswith("run_")]
+    runs = [
+        os.path.join(results_dir, d)
+        for d in os.listdir(results_dir)
+        if d.startswith("run_")
+    ]
     if not runs:
         return None
     runs.sort(key=os.path.getmtime, reverse=True)
@@ -64,13 +127,13 @@ def load_data(target_path):
 
     summary_rows = []
     if os.path.exists(summary_csv):
-        with open(summary_csv, 'r', newline='') as f:
+        with open(summary_csv, "r", newline="") as f:
             reader = csv.DictReader(f)
             summary_rows = list(reader)
 
     raw_rows = []
     if os.path.exists(raw_csv):
-        with open(raw_csv, 'r', newline='') as f:
+        with open(raw_csv, "r", newline="") as f:
             reader = csv.DictReader(f)
             raw_rows = list(reader)
 
@@ -80,47 +143,59 @@ def load_data(target_path):
     stab_rows = []
     if os.path.exists(stab_summary_csv):
         try:
-            with open(stab_summary_csv, 'r', newline='') as f:
+            with open(stab_summary_csv, "r", newline="") as f:
                 stab_rows = list(csv.DictReader(f))
         except Exception:
             pass
     elif os.path.exists(stab_raw_csv):
         try:
-            with open(stab_raw_csv, 'r', newline='') as f:
+            with open(stab_raw_csv, "r", newline="") as f:
                 reader = csv.DictReader(f)
                 groups = defaultdict(list)
                 for r in reader:
-                    w_val = int(r['workers'])
-                    groups[(r['variant'], r['mode'], w_val)].append({
-                        'rmse_ptv': float(r['rmse_ptv']),
-                        'rmse_rectum': float(r['rmse_rectum']),
-                        'rmse_bladder': float(r['rmse_bladder']),
-                        'rmse_total_fitness': float(r['rmse_total_fitness']),
-                        'rmse_genes': float(r['rmse_genes']),
-                        'spread_par': float(r['spread_par']),
-                    })
+                    w_val = int(r["workers"])
+                    groups[(r["variant"], r["mode"], w_val)].append(
+                        {
+                            "rmse_ptv": float(r["rmse_ptv"]),
+                            "rmse_rectum": float(r["rmse_rectum"]),
+                            "rmse_bladder": float(r["rmse_bladder"]),
+                            "rmse_total_fitness": float(r["rmse_total_fitness"]),
+                            "rmse_genes": float(r["rmse_genes"]),
+                            "spread_par": float(r["spread_par"]),
+                        }
+                    )
                 for (v, m, w_val), items in sorted(groups.items()):
                     c = len(items)
-                    avg_fit = sum(x['rmse_total_fitness'] for x in items) / c
-                    avg_gen = sum(x['rmse_genes'] for x in items) / c
-                    avg_ptv = sum(x['rmse_ptv'] for x in items) / c
-                    avg_rec = sum(x['rmse_rectum'] for x in items) / c
-                    avg_bla = sum(x['rmse_bladder'] for x in items) / c
-                    avg_spread = sum(x['spread_par'] for x in items) / c
-                    status = "BASELINE" if v == 'seq' else ("DETERMINISTICO (0 err)" if avg_fit == 0.0 and avg_gen == 0.0 else "STABILE (Dev. GA)")
-                    stab_rows.append({
-                        'variant': v,
-                        'mode': m,
-                        'workers': str(w_val),
-                        'repetitions': str(c),
-                        'avg_rmse_ptv': f"{avg_ptv:.6f}",
-                        'avg_rmse_rectum': f"{avg_rec:.6f}",
-                        'avg_rmse_bladder': f"{avg_bla:.6f}",
-                        'avg_rmse_fitness': f"{avg_fit:.6f}",
-                        'avg_rmse_genes': f"{avg_gen:.6f}",
-                        'avg_spread': f"{avg_spread:.6f}",
-                        'status': status
-                    })
+                    avg_fit = sum(x["rmse_total_fitness"] for x in items) / c
+                    avg_gen = sum(x["rmse_genes"] for x in items) / c
+                    avg_ptv = sum(x["rmse_ptv"] for x in items) / c
+                    avg_rec = sum(x["rmse_rectum"] for x in items) / c
+                    avg_bla = sum(x["rmse_bladder"] for x in items) / c
+                    avg_spread = sum(x["spread_par"] for x in items) / c
+                    status = (
+                        "BASELINE"
+                        if v == "seq"
+                        else (
+                            "DETERMINISTICO (0 err)"
+                            if avg_fit == 0.0 and avg_gen == 0.0
+                            else "STABILE (Dev. GA)"
+                        )
+                    )
+                    stab_rows.append(
+                        {
+                            "variant": v,
+                            "mode": m,
+                            "workers": str(w_val),
+                            "repetitions": str(c),
+                            "avg_rmse_ptv": f"{avg_ptv:.6f}",
+                            "avg_rmse_rectum": f"{avg_rec:.6f}",
+                            "avg_rmse_bladder": f"{avg_bla:.6f}",
+                            "avg_rmse_fitness": f"{avg_fit:.6f}",
+                            "avg_rmse_genes": f"{avg_gen:.6f}",
+                            "avg_spread": f"{avg_spread:.6f}",
+                            "status": status,
+                        }
+                    )
         except Exception:
             pass
 
@@ -133,46 +208,60 @@ def print_terminal_summary(summary_rows, stab_rows=None):
         return
 
     if summary_rows:
-        phases = sorted(list({r['phase'] for r in summary_rows}))
-        target_phase = 'nsga2_total' if 'nsga2_total' in phases else phases[0]
+        phases = sorted({r["phase"] for r in summary_rows})
+        target_phase = "nsga2_total" if "nsga2_total" in phases else phases[0]
 
         print("\n" + "=" * 105)
         print(f"  RIEPILOGO PRESTAZIONI (Fase: {target_phase})")
         print("=" * 105)
-        print(f"{'VARIANTE':<14} {'MODALITÀ':<14} {'WORKERS':<9} {'TEMPO MEDIO (s)':<18} {'SPEEDUP (seq)':<16} {'SPEEDUP (T1)':<16} {'EFFICIENZA':<14}")
+        print(
+            f"{'VARIANTE':<14} {'MODALITÀ':<14} {'WORKERS':<9} {'TEMPO MEDIO (s)':<18} {'SPEEDUP (seq)':<16} {'SPEEDUP (T1)':<16} {'EFFICIENZA':<14}"
+        )
         print("-" * 105)
 
         def sort_key(r):
-            return (r['variant'], r['mode'], int(r['workers']))
+            return (r["variant"], r["mode"], int(r["workers"]))
 
-        phase_rows = [r for r in summary_rows if r['phase'] == target_phase]
+        phase_rows = [r for r in summary_rows if r["phase"] == target_phase]
         phase_rows.sort(key=sort_key)
 
         for r in phase_rows:
-            variant = r['variant']
-            mode = r['mode']
-            workers = r['workers']
-            mean_s = float(r['avg_mean_ms']) / 1000.0
+            variant = r["variant"]
+            mode = r["mode"]
+            workers = r["workers"]
+            mean_s = float(r["avg_mean_ms"]) / 1000.0
 
-            s_seq = f"{float(r['speedup_seq']):.2f}x" if r.get('speedup_seq') else "-"
-            s_t1 = f"{float(r['speedup_t1']):.2f}x" if r.get('speedup_t1') else "-"
-            eff = f"{float(r['efficiency_t1']) * 100:.1f}%" if r.get('efficiency_t1') else "-"
+            s_seq = f"{float(r['speedup_seq']):.2f}x" if r.get("speedup_seq") else "-"
+            s_t1 = f"{float(r['speedup_t1']):.2f}x" if r.get("speedup_t1") else "-"
+            eff = (
+                f"{float(r['efficiency_t1']) * 100:.1f}%"
+                if r.get("efficiency_t1")
+                else "-"
+            )
 
-            print(f"{variant:<14} {mode:<14} {workers:<9} {mean_s:<18.3f} {s_seq:<16} {s_t1:<16} {eff:<14}")
+            print(
+                f"{variant:<14} {mode:<14} {workers:<9} {mean_s:<18.3f} {s_seq:<16} {s_t1:<16} {eff:<14}"
+            )
 
         print("=" * 105 + "\n")
 
     if stab_rows:
         print("=" * 110)
-        print("  STABILITÀ DELLE SOLUZIONI (RMSE vs Baseline Sequenziale) & DETERMINISMO")
+        print(
+            "  STABILITÀ DELLE SOLUZIONI (RMSE vs Baseline Sequenziale) & DETERMINISMO"
+        )
         print("=" * 110)
-        print(f"{'VARIANTE':<10} {'MODE':<10} {'WORKERS':<9} {'RMSE_FITNESS':<14} {'RMSE_GENI':<14} {'SPREAD_PAR':<12} {'STATO DETERMINISMO':<30}")
+        print(
+            f"{'VARIANTE':<10} {'MODE':<10} {'WORKERS':<9} {'RMSE_FITNESS':<14} {'RMSE_GENI':<14} {'SPREAD_PAR':<12} {'STATO DETERMINISMO':<30}"
+        )
         print("-" * 110)
         for r in stab_rows:
-            fit_val = float(r.get('avg_rmse_fitness', 0.0))
-            gen_val = float(r.get('avg_rmse_genes', 0.0))
-            spread_val = float(r.get('avg_spread', 0.0))
-            print(f"{r['variant']:<10} {r['mode']:<10} {r['workers']:<9} {fit_val:<14.6f} {gen_val:<14.6f} {spread_val:<12.4f} {r.get('status', '-'):<30}")
+            fit_val = float(r.get("avg_rmse_fitness", 0.0))
+            gen_val = float(r.get("avg_rmse_genes", 0.0))
+            spread_val = float(r.get("avg_spread", 0.0))
+            print(
+                f"{r['variant']:<10} {r['mode']:<10} {r['workers']:<9} {fit_val:<14.6f} {gen_val:<14.6f} {spread_val:<12.4f} {r.get('status', '-'):<30}"
+            )
         print("=" * 110 + "\n")
 
 
@@ -188,11 +277,11 @@ def generate_svg_chart(
     is_stability=False,
     speedup_mode="log",
     time_mode="linear",
-    theme="light"
+    theme="light",
 ):
     """
     Genera un grafico vettoriale SVG professionale e pulito, pronto per report e tesi.
-    Supporta tema chiaro (sfondo bianco puro, ideale per report/stampe) e scuro,
+    Supporta tema chiaro (sfondo bianco puro, Ideal per report/stampe) e scuro,
     spaziatura uniforme log2 per le potenze di 2 e marcatori distinti per ogni serie.
     """
     w, h = 800, 480
@@ -202,12 +291,12 @@ def generate_svg_chart(
 
     # Palette ad alto contrasto adatta sia a schermo che a stampa
     palette = [
-        {"color": "#0969da", "shape": "circle"},     # Blu
-        {"color": "#1a7f37", "shape": "rect"},       # Verde
-        {"color": "#d1242f", "shape": "triangle"},   # Rosso
-        {"color": "#8250df", "shape": "diamond"},    # Viola
-        {"color": "#e36209", "shape": "circle"},     # Arancione
-        {"color": "#0891b2", "shape": "rect"},       # Ciano
+        {"color": "#0969da", "shape": "circle"},  # Blu
+        {"color": "#1a7f37", "shape": "rect"},  # Verde
+        {"color": "#d1242f", "shape": "triangle"},  # Rosso
+        {"color": "#8250df", "shape": "diamond"},  # Viola
+        {"color": "#e36209", "shape": "circle"},  # Arancione
+        {"color": "#0891b2", "shape": "rect"},  # Ciano
     ]
 
     if theme == "light":
@@ -248,11 +337,11 @@ def generate_svg_chart(
     if not all_x or not all_y:
         return
 
-    unique_x = sorted(list(set(all_x)))
+    unique_x = sorted(set(all_x))
     min_x, max_x = min(unique_x), max(unique_x)
 
     # Rilevamento scala log2 su X (evita sovrapposizioni su 1, 2, 4...)
-    use_log_x = (min_x > 0 and (max_x / min_x >= 4) and all(x > 0 for x in unique_x))
+    use_log_x = min_x > 0 and (max_x / min_x >= 4) and all(x > 0 for x in unique_x)
     log2_min_x = math.log2(min_x) if use_log_x else 0
     log2_max_x = math.log2(max_x) if use_log_x else 0
 
@@ -260,7 +349,10 @@ def generate_svg_chart(
         if use_log_x:
             if log2_max_x == log2_min_x:
                 return pad_left + plot_w / 2
-            return pad_left + (math.log2(val_x) - log2_min_x) / (log2_max_x - log2_min_x) * plot_w
+            return (
+                pad_left
+                + (math.log2(val_x) - log2_min_x) / (log2_max_x - log2_min_x) * plot_w
+            )
         else:
             if max_x == min_x:
                 return pad_left + plot_w / 2
@@ -277,7 +369,7 @@ def generate_svg_chart(
         min_y = 0.0
         max_actual_y = max(all_y)
         max_y = math.ceil(max_actual_y * 1.15 / 5.0) * 5.0
-        if max_y < 2.0: max_y = 2.0
+        max_y = max(max_y, 2.0)
     elif is_efficiency:
         min_y = 0.0
         max_y = 105.0
@@ -285,7 +377,8 @@ def generate_svg_chart(
         use_log_y = True
         min_y = max(1.0, 10 ** math.floor(math.log10(min(all_y))))
         max_y = 10 ** math.ceil(math.log10(max(all_y)))
-        if max_y <= min_y: max_y = min_y * 10.0
+        if max_y <= min_y:
+            max_y = min_y * 10.0
         log10_min_y = math.log10(min_y)
         log10_max_y = math.log10(max_y)
     elif is_time:
@@ -303,11 +396,27 @@ def generate_svg_chart(
         if use_log_y and is_speedup:
             safe_y = max(val_y, min_y)
             denom = log2_max_y - log2_min_y
-            return pad_top + plot_h - ((math.log2(safe_y) - log2_min_y) / denom * plot_h if denom != 0 else 0.0)
+            return (
+                pad_top
+                + plot_h
+                - (
+                    (math.log2(safe_y) - log2_min_y) / denom * plot_h
+                    if denom != 0
+                    else 0.0
+                )
+            )
         elif use_log_y and is_time:
             safe_y = max(val_y, min_y)
             denom = log10_max_y - log10_min_y
-            return pad_top + plot_h - ((math.log10(safe_y) - log10_min_y) / denom * plot_h if denom != 0 else 0.0)
+            return (
+                pad_top
+                + plot_h
+                - (
+                    (math.log10(safe_y) - log10_min_y) / denom * plot_h
+                    if denom != 0
+                    else 0.0
+                )
+            )
         else:
             if max_y == min_y:
                 return pad_top + plot_h / 2
@@ -317,29 +426,39 @@ def generate_svg_chart(
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" width="{w}" height="{h}">',
         f'<rect width="{w}" height="{h}" fill="{bg_canvas}" />',
         f'<text x="{pad_left}" y="36" fill="{text_title}" font-family="system-ui, -apple-system, sans-serif" font-size="16" font-weight="bold">{title}</text>',
-        f'<rect x="{pad_left}" y="{pad_top}" width="{plot_w}" height="{plot_h}" fill="{bg_plot}" stroke="{border_plot}" stroke-width="1.2" />'
+        f'<rect x="{pad_left}" y="{pad_top}" width="{plot_w}" height="{plot_h}" fill="{bg_plot}" stroke="{border_plot}" stroke-width="1.2" />',
     ]
 
     # Asse Y
     if use_log_y and is_speedup:
         powers = range(int(log2_min_y), int(log2_max_y) + 1)
         for p in powers:
-            val_y = 2 ** p
+            val_y = 2**p
             py = to_py(val_y)
-            svg.append(f'<line x1="{pad_left}" y1="{py:.1f}" x2="{pad_left + plot_w}" y2="{py:.1f}" stroke="{grid_major}" stroke-width="1" stroke-dasharray="3,3" />')
-            svg.append(f'<text x="{pad_left - 10}" y="{py + 4:.1f}" fill="{text_tick}" font-family="system-ui, -apple-system, sans-serif" font-size="11" text-anchor="end">{int(val_y)}x</text>')
+            svg.append(
+                f'<line x1="{pad_left}" y1="{py:.1f}" x2="{pad_left + plot_w}" y2="{py:.1f}" stroke="{grid_major}" stroke-width="1" stroke-dasharray="3,3" />'
+            )
+            svg.append(
+                f'<text x="{pad_left - 10}" y="{py + 4:.1f}" fill="{text_tick}" font-family="system-ui, -apple-system, sans-serif" font-size="11" text-anchor="end">{int(val_y)}x</text>'
+            )
     elif use_log_y and is_time:
         for p in range(int(log10_min_y), int(log10_max_y) + 1):
-            val_y = 10 ** p
+            val_y = 10**p
             py = to_py(val_y)
-            svg.append(f'<line x1="{pad_left}" y1="{py:.1f}" x2="{pad_left + plot_w}" y2="{py:.1f}" stroke="{grid_major}" stroke-width="1" stroke-dasharray="3,3" />')
-            svg.append(f'<text x="{pad_left - 10}" y="{py + 4:.1f}" fill="{text_tick}" font-family="system-ui, -apple-system, sans-serif" font-size="11" text-anchor="end">{int(val_y)}s</text>')
+            svg.append(
+                f'<line x1="{pad_left}" y1="{py:.1f}" x2="{pad_left + plot_w}" y2="{py:.1f}" stroke="{grid_major}" stroke-width="1" stroke-dasharray="3,3" />'
+            )
+            svg.append(
+                f'<text x="{pad_left - 10}" y="{py + 4:.1f}" fill="{text_tick}" font-family="system-ui, -apple-system, sans-serif" font-size="11" text-anchor="end">{int(val_y)}s</text>'
+            )
     else:
         y_ticks = 5
         for i in range(y_ticks + 1):
             y_val = min_y + (max_y - min_y) * (i / y_ticks)
             py = to_py(y_val)
-            svg.append(f'<line x1="{pad_left}" y1="{py:.1f}" x2="{pad_left + plot_w}" y2="{py:.1f}" stroke="{grid_major}" stroke-width="1" stroke-dasharray="3,3" />')
+            svg.append(
+                f'<line x1="{pad_left}" y1="{py:.1f}" x2="{pad_left + plot_w}" y2="{py:.1f}" stroke="{grid_major}" stroke-width="1" stroke-dasharray="3,3" />'
+            )
             if is_efficiency:
                 y_text = f"{y_val:.0f}%"
             elif is_speedup:
@@ -350,21 +469,31 @@ def generate_svg_chart(
                 y_text = f"{y_val:.2f}"
             else:
                 y_text = f"{y_val:.1f}"
-            svg.append(f'<text x="{pad_left - 10}" y="{py + 4:.1f}" fill="{text_tick}" font-family="system-ui, -apple-system, sans-serif" font-size="11" text-anchor="end">{y_text}</text>')
+            svg.append(
+                f'<text x="{pad_left - 10}" y="{py + 4:.1f}" fill="{text_tick}" font-family="system-ui, -apple-system, sans-serif" font-size="11" text-anchor="end">{y_text}</text>'
+            )
 
     # Asse X
     for ux in unique_x:
         px = to_px(ux)
-        svg.append(f'<line x1="{px:.1f}" y1="{pad_top}" x2="{px:.1f}" y2="{pad_top + plot_h}" stroke="{grid_minor}" stroke-width="1" stroke-dasharray="2,2" />')
-        svg.append(f'<line x1="{px:.1f}" y1="{pad_top + plot_h}" x2="{px:.1f}" y2="{pad_top + plot_h + 5}" stroke="{border_plot}" stroke-width="1.2" />')
-        svg.append(f'<text x="{px:.1f}" y="{pad_top + plot_h + 18}" fill="{text_tick}" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="500" text-anchor="middle">{ux}</text>')
+        svg.append(
+            f'<line x1="{px:.1f}" y1="{pad_top}" x2="{px:.1f}" y2="{pad_top + plot_h}" stroke="{grid_minor}" stroke-width="1" stroke-dasharray="2,2" />'
+        )
+        svg.append(
+            f'<line x1="{px:.1f}" y1="{pad_top + plot_h}" x2="{px:.1f}" y2="{pad_top + plot_h + 5}" stroke="{border_plot}" stroke-width="1.2" />'
+        )
+        svg.append(
+            f'<text x="{px:.1f}" y="{pad_top + plot_h + 18}" fill="{text_tick}" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="500" text-anchor="middle">{ux}</text>'
+        )
 
     # Linea ideale (Speedup o Efficienza)
     if is_speedup:
         if use_log_y:
             p1_x, p1_y = to_px(min_x), to_py(min_x)
             p2_x, p2_y = to_px(max_x), to_py(max_x)
-            svg.append(f'<line x1="{p1_x:.1f}" y1="{p1_y:.1f}" x2="{p2_x:.1f}" y2="{p2_y:.1f}" stroke="{ideal_color}" stroke-width="1.6" stroke-dasharray="5,4" />')
+            svg.append(
+                f'<line x1="{p1_x:.1f}" y1="{p1_y:.1f}" x2="{p2_x:.1f}" y2="{p2_y:.1f}" stroke="{ideal_color}" stroke-width="1.6" stroke-dasharray="5,4" />'
+            )
         else:
             ideal_pts = []
             for ux in unique_x:
@@ -375,10 +504,14 @@ def generate_svg_chart(
                     break
             if len(ideal_pts) > 1:
                 poly = " ".join([f"{x:.1f},{y:.1f}" for x, y in ideal_pts])
-                svg.append(f'<polyline fill="none" stroke="{ideal_color}" stroke-width="1.6" stroke-dasharray="5,4" points="{poly}" />')
+                svg.append(
+                    f'<polyline fill="none" stroke="{ideal_color}" stroke-width="1.6" stroke-dasharray="5,4" points="{poly}" />'
+                )
     elif is_efficiency:
         py_100 = to_py(100.0)
-        svg.append(f'<line x1="{pad_left}" y1="{py_100:.1f}" x2="{pad_left + plot_w}" y2="{py_100:.1f}" stroke="{ideal_color}" stroke-width="1.6" stroke-dasharray="5,4" />')
+        svg.append(
+            f'<line x1="{pad_left}" y1="{py_100:.1f}" x2="{pad_left + plot_w}" y2="{py_100:.1f}" stroke="{ideal_color}" stroke-width="1.6" stroke-dasharray="5,4" />'
+        )
 
     # Tracciamento serie dati
     legend_entries = []
@@ -390,75 +523,122 @@ def generate_svg_chart(
         valid_pts.sort(key=lambda p: p[0])
 
         if len(valid_pts) > 1:
-            poly_points = " ".join([f"{to_px(px):.1f},{to_py(py):.1f}" for px, py in valid_pts])
-            svg.append(f'<polyline fill="none" stroke="{color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" points="{poly_points}" />')
+            poly_points = " ".join(
+                [f"{to_px(px):.1f},{to_py(py):.1f}" for px, py in valid_pts]
+            )
+            svg.append(
+                f'<polyline fill="none" stroke="{color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" points="{poly_points}" />'
+            )
 
         for px, py in valid_pts:
             cx, cy = to_px(px), to_py(py)
             if shape == "rect":
-                svg.append(f'<rect x="{cx - 4:.1f}" y="{cy - 4:.1f}" width="8" height="8" fill="{color}" stroke="#ffffff" stroke-width="1.5" />')
+                svg.append(
+                    f'<rect x="{cx - 4:.1f}" y="{cy - 4:.1f}" width="8" height="8" fill="{color}" stroke="#ffffff" stroke-width="1.5" />'
+                )
             elif shape == "triangle":
-                svg.append(f'<polygon points="{cx:.1f},{cy - 5.5:.1f} {cx + 5:.1f},{cy + 4.5:.1f} {cx - 5:.1f},{cy + 4.5:.1f}" fill="{color}" stroke="#ffffff" stroke-width="1.5" />')
+                svg.append(
+                    f'<polygon points="{cx:.1f},{cy - 5.5:.1f} {cx + 5:.1f},{cy + 4.5:.1f} {cx - 5:.1f},{cy + 4.5:.1f}" fill="{color}" stroke="#ffffff" stroke-width="1.5" />'
+                )
             elif shape == "diamond":
-                svg.append(f'<polygon points="{cx:.1f},{cy - 5.5:.1f} {cx + 5:.1f},{cy:.1f} {cx:.1f},{cy + 5.5:.1f} {cx - 5:.1f},{cy:.1f}" fill="{color}" stroke="#ffffff" stroke-width="1.5" />')
+                svg.append(
+                    f'<polygon points="{cx:.1f},{cy - 5.5:.1f} {cx + 5:.1f},{cy:.1f} {cx:.1f},{cy + 5.5:.1f} {cx - 5:.1f},{cy:.1f}" fill="{color}" stroke="#ffffff" stroke-width="1.5" />'
+                )
             else:
-                svg.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="4.5" fill="{color}" stroke="#ffffff" stroke-width="1.5" />')
+                svg.append(
+                    f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="4.5" fill="{color}" stroke="#ffffff" stroke-width="1.5" />'
+                )
 
         legend_entries.append((label, color, shape))
 
     # Box Legenda
-    legend_h = len(legend_entries) * 24 + (24 if (is_speedup or is_efficiency) else 10) + 12
+    legend_h = (
+        len(legend_entries) * 24 + (24 if (is_speedup or is_efficiency) else 10) + 12
+    )
     legend_x = pad_left + plot_w + 14
     legend_y = pad_top
-    svg.append(f'<rect x="{legend_x}" y="{legend_y}" width="{pad_right - 24}" height="{legend_h}" fill="{card_bg}" stroke="{card_border}" stroke-width="1" rx="6" />')
+    svg.append(
+        f'<rect x="{legend_x}" y="{legend_y}" width="{pad_right - 24}" height="{legend_h}" fill="{card_bg}" stroke="{card_border}" stroke-width="1" rx="6" />'
+    )
 
     cur_y = legend_y + 18
     for label, color, shape in legend_entries:
         icon_cx = legend_x + 16
         icon_cy = cur_y - 4
-        svg.append(f'<line x1="{icon_cx - 8}" y1="{icon_cy}" x2="{icon_cx + 8}" y2="{icon_cy}" stroke="{color}" stroke-width="2" />')
+        svg.append(
+            f'<line x1="{icon_cx - 8}" y1="{icon_cy}" x2="{icon_cx + 8}" y2="{icon_cy}" stroke="{color}" stroke-width="2" />'
+        )
         if shape == "rect":
-            svg.append(f'<rect x="{icon_cx - 3.5}" y="{icon_cy - 3.5}" width="7" height="7" fill="{color}" stroke="#ffffff" stroke-width="1" />')
+            svg.append(
+                f'<rect x="{icon_cx - 3.5}" y="{icon_cy - 3.5}" width="7" height="7" fill="{color}" stroke="#ffffff" stroke-width="1" />'
+            )
         elif shape == "triangle":
-            svg.append(f'<polygon points="{icon_cx},{icon_cy - 4} {icon_cx + 4},{icon_cy + 3.5} {icon_cx - 4},{icon_cy + 3.5}" fill="{color}" stroke="#ffffff" stroke-width="1" />')
+            svg.append(
+                f'<polygon points="{icon_cx},{icon_cy - 4} {icon_cx + 4},{icon_cy + 3.5} {icon_cx - 4},{icon_cy + 3.5}" fill="{color}" stroke="#ffffff" stroke-width="1" />'
+            )
         elif shape == "diamond":
-            svg.append(f'<polygon points="{icon_cx},{icon_cy - 4.5} {icon_cx + 4},{icon_cy} {icon_cx},{icon_cy + 4.5} {icon_cx - 4},{icon_cy}" fill="{color}" stroke="#ffffff" stroke-width="1" />')
+            svg.append(
+                f'<polygon points="{icon_cx},{icon_cy - 4.5} {icon_cx + 4},{icon_cy} {icon_cx},{icon_cy + 4.5} {icon_cx - 4},{icon_cy}" fill="{color}" stroke="#ffffff" stroke-width="1" />'
+            )
         else:
-            svg.append(f'<circle cx="{icon_cx}" cy="{icon_cy}" r="3.5" fill="{color}" stroke="#ffffff" stroke-width="1" />')
+            svg.append(
+                f'<circle cx="{icon_cx}" cy="{icon_cy}" r="3.5" fill="{color}" stroke="#ffffff" stroke-width="1" />'
+            )
 
-        svg.append(f'<text x="{legend_x + 32}" y="{cur_y}" fill="{legend_text}" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="500">{label}</text>')
+        svg.append(
+            f'<text x="{legend_x + 32}" y="{cur_y}" fill="{legend_text}" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="500">{label}</text>'
+        )
         cur_y += 22
 
     if is_speedup:
         icon_cx = legend_x + 16
         icon_cy = cur_y - 4
-        svg.append(f'<line x1="{icon_cx - 8}" y1="{icon_cy}" x2="{icon_cx + 8}" y2="{icon_cy}" stroke="{ideal_color}" stroke-dasharray="3,2" stroke-width="1.8" />')
-        svg.append(f'<text x="{legend_x + 32}" y="{cur_y}" fill="{ideal_color}" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="500">Ideale (S = p)</text>')
+        svg.append(
+            f'<line x1="{icon_cx - 8}" y1="{icon_cy}" x2="{icon_cx + 8}" y2="{icon_cy}" stroke="{ideal_color}" stroke-dasharray="3,2" stroke-width="1.8" />'
+        )
+        svg.append(
+            f'<text x="{legend_x + 32}" y="{cur_y}" fill="{ideal_color}" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="500">Ideal (S = p)</text>'
+        )
     elif is_efficiency:
         icon_cx = legend_x + 16
         icon_cy = cur_y - 4
-        svg.append(f'<line x1="{icon_cx - 8}" y1="{icon_cy}" x2="{icon_cx + 8}" y2="{icon_cy}" stroke="{ideal_color}" stroke-dasharray="3,2" stroke-width="1.8" />')
-        svg.append(f'<text x="{legend_x + 32}" y="{cur_y}" fill="{ideal_color}" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="500">Ideale (100%)</text>')
+        svg.append(
+            f'<line x1="{icon_cx - 8}" y1="{icon_cy}" x2="{icon_cx + 8}" y2="{icon_cy}" stroke="{ideal_color}" stroke-dasharray="3,2" stroke-width="1.8" />'
+        )
+        svg.append(
+            f'<text x="{legend_x + 32}" y="{cur_y}" fill="{ideal_color}" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="500">Ideal (100%)</text>'
+        )
 
     # Etichette assi
-    svg.append(f'<text x="{pad_left + plot_w / 2}" y="{h - 15}" fill="{text_axis}" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600" text-anchor="middle">{x_label}</text>')
-    svg.append(f'<text x="22" y="{pad_top + plot_h / 2}" fill="{text_axis}" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600" text-anchor="middle" transform="rotate(-90 22 {pad_top + plot_h / 2})">{y_label}</text>')
+    svg.append(
+        f'<text x="{pad_left + plot_w / 2}" y="{h - 15}" fill="{text_axis}" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600" text-anchor="middle">{x_label}</text>'
+    )
+    svg.append(
+        f'<text x="22" y="{pad_top + plot_h / 2}" fill="{text_axis}" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600" text-anchor="middle" transform="rotate(-90 22 {pad_top + plot_h / 2})">{y_label}</text>'
+    )
 
-    svg.append('</svg>')
+    svg.append("</svg>")
 
-    with open(out_path, 'w', encoding='utf-8') as f:
+    with open(out_path, "w", encoding="utf-8") as f:
         f.write("\n".join(svg))
 
     print(f"Grafico SVG salvato: {out_path}")
 
 
-def generate_all_svg_charts(summary_rows, results_dir, stab_rows=None, theme="light"):
+def generate_all_svg_charts(summary_rows, results_dir, stab_rows=None, theme="light", config=None):
     """
     Genera i grafici SVG standalone per la fase principale e per la stabilità.
     """
-    phases = sorted(list({r['phase'] for r in summary_rows}))
-    target_phase = 'nsga2_total' if 'nsga2_total' in phases else phases[0]
-    rows = [r for r in summary_rows if r['phase'] == target_phase]
+    if config is None:
+        config = PlotConfig(output_dir=results_dir, theme=theme)
+
+    target_dir = config.output_dir
+    os.makedirs(target_dir, exist_ok=True)
+    theme = config.theme
+
+    phases = sorted({r["phase"] for r in summary_rows})
+    target_phase = "nsga2_total" if "nsga2_total" in phases else phases[0]
+    rows = [r for r in summary_rows if r["phase"] == target_phase]
 
     speedup_series = defaultdict(list)
     eff_series = defaultdict(list)
@@ -466,10 +646,10 @@ def generate_all_svg_charts(summary_rows, results_dir, stab_rows=None, theme="li
 
     for r in rows:
         label = f"{r['variant']} ({r['mode']})"
-        w = int(r['workers'])
-        time_s = float(r['avg_mean_ms']) / 1000.0
-        s_t1 = float(r['speedup_t1']) if r.get('speedup_t1') else None
-        eff_t1 = float(r['efficiency_t1']) * 100.0 if r.get('efficiency_t1') else None
+        w = int(r["workers"])
+        time_s = float(r["avg_mean_ms"]) / 1000.0
+        s_t1 = float(r["speedup_t1"]) if r.get("speedup_t1") else None
+        eff_t1 = float(r["efficiency_t1"]) * 100.0 if r.get("efficiency_t1") else None
 
         time_series[label].append((w, time_s))
         if s_t1 is not None:
@@ -478,115 +658,135 @@ def generate_all_svg_charts(summary_rows, results_dir, stab_rows=None, theme="li
             eff_series[label].append((w, eff_t1))
 
     # 1. Speedup principale (Log-Log per rappresentazione standard HPC)
+    speedup_title = config.get_title(f"Speedup vs Cores ({target_phase})", config.speedup_title)
     generate_svg_chart(
-        f"Speedup vs Cores ({target_phase})",
-        "Numero di Cores / Workers",
+        speedup_title,
+        "Cores / Workers",
         "Speedup (T1 / Tp)",
         speedup_series,
-        os.path.join(results_dir, "speedup.svg"),
+        config.path(config.speedup_name, "svg"),
         is_speedup=True,
         speedup_mode="log",
-        theme=theme
+        theme=theme,
     )
 
     # 2. Speedup scala lineare (alternativa per report)
-    generate_svg_chart(
+    speedup_linear_title = config.get_title(
         f"Speedup vs Cores - Scala Lineare ({target_phase})",
-        "Numero di Cores / Workers",
+        f"{config.speedup_title} (Scala Lineare)" if config.speedup_title else None,
+    )
+    generate_svg_chart(
+        speedup_linear_title,
+        "Cores / Workers",
         "Speedup (T1 / Tp)",
         speedup_series,
-        os.path.join(results_dir, "speedup_linear.svg"),
+        config.path(f"{config.speedup_name}_linear", "svg"),
         is_speedup=True,
         speedup_mode="linear",
-        theme=theme
+        theme=theme,
     )
 
     # 3. Efficienza Parallela
+    efficiency_title = config.get_title(f"Efficiency ({target_phase})", config.efficiency_title)
     generate_svg_chart(
-        f"Efficienza Parallela vs Cores ({target_phase})",
-        "Numero di Cores / Workers",
-        "Efficienza Parallela (%)",
+        efficiency_title,
+        "Cores / Workers",
+        "Efficiency (%)",
         eff_series,
-        os.path.join(results_dir, "efficiency.svg"),
+        config.path(config.efficiency_name, "svg"),
         is_efficiency=True,
-        theme=theme
+        theme=theme,
     )
 
-    # 4. Tempo di Esecuzione lineare
+    # 4. Completion time lineare
+    time_title = config.get_title(f"Completion time vs Cores ({target_phase})", config.time_title)
     generate_svg_chart(
-        f"Tempo di Esecuzione vs Cores ({target_phase})",
-        "Numero di Cores / Workers",
+        time_title,
+        "Cores / Workers",
         "Tempo (secondi)",
         time_series,
-        os.path.join(results_dir, "execution_time.svg"),
+        config.path(config.time_name, "svg"),
         is_time=True,
         time_mode="linear",
-        theme=theme
+        theme=theme,
     )
 
-    # 5. Tempo di Esecuzione logaritmico
+    # 5. Completion time logaritmico
+    time_log_title = config.get_title(
+        f"Completion time vs Cores - Log scale ({target_phase})",
+        f"{config.time_title} (Log scale)" if config.time_title else None,
+    )
     generate_svg_chart(
-        f"Tempo di Esecuzione vs Cores - Scala Log ({target_phase})",
-        "Numero di Cores / Workers",
-        "Tempo (secondi, scala log10)",
+        time_log_title,
+        "Cores / Workers",
+        "log_10(seconds)",
         time_series,
-        os.path.join(results_dir, "execution_time_log.svg"),
+        config.path(f"{config.time_name}_log", "svg"),
         is_time=True,
         time_mode="log",
-        theme=theme
+        theme=theme,
     )
 
     # 6. Stabilità delle soluzioni
     if stab_rows:
         stab_series = defaultdict(list)
         for r in stab_rows:
-            if r['variant'] == 'seq':
+            if r["variant"] == "seq":
                 continue
             label = f"{r['variant']} ({r['mode']})"
-            w = int(r['workers'])
-            fit_rmse = float(r.get('avg_rmse_fitness', 0.0))
+            w = int(r["workers"])
+            fit_rmse = float(r.get("avg_rmse_fitness", 0.0))
             stab_series[label].append((w, fit_rmse))
 
         if stab_series:
+            stability_title = config.get_title(
+                "Solution stability: RMSE Fitness vs Cores", config.stability_title
+            )
             generate_svg_chart(
-                "Stabilità delle Soluzioni: RMSE Fitness vs Cores",
-                "Numero di Cores / Workers",
+                stability_title,
+                "Cores / Workers",
                 "RMSE Fitness (vs Baseline)",
                 stab_series,
-                os.path.join(results_dir, "solution_stability.svg"),
+                config.path(config.stability_name, "svg"),
                 is_stability=True,
-                theme=theme
+                theme=theme,
             )
 
 
-def generate_html_report(summary_rows, raw_rows, results_dir, stab_rows=None):
+
+def generate_html_report(summary_rows, raw_rows, results_dir, stab_rows=None, config=None):
     """
     Genera un report HTML completo e interattivo con grafici Chart.js (online)
     e link diretti agli SVG vettoriali (offline).
     """
-    html_path = os.path.join(results_dir, "report.html")
+    if config is None:
+        config = PlotConfig(output_dir=results_dir)
+
+    target_dir = config.output_dir
+    os.makedirs(target_dir, exist_ok=True)
+    html_path = config.path(config.report_name, "html")
 
     phase_data = defaultdict(lambda: defaultdict(dict))
     for r in summary_rows:
-        phase = r['phase']
+        phase = r["phase"]
         label = f"{r['variant']} ({r['mode']})"
-        w = int(r['workers'])
-        time_s = float(r['avg_mean_ms']) / 1000.0
-        s_seq = float(r['speedup_seq']) if r.get('speedup_seq') else None
-        s_t1 = float(r['speedup_t1']) if r.get('speedup_t1') else None
-        eff_t1 = float(r['efficiency_t1']) * 100.0 if r.get('efficiency_t1') else None
+        w = int(r["workers"])
+        time_s = float(r["avg_mean_ms"]) / 1000.0
+        s_seq = float(r["speedup_seq"]) if r.get("speedup_seq") else None
+        s_t1 = float(r["speedup_t1"]) if r.get("speedup_t1") else None
+        eff_t1 = float(r["efficiency_t1"]) * 100.0 if r.get("efficiency_t1") else None
 
         phase_data[phase][label][w] = {
-            'time_s': time_s,
-            'speedup_seq': s_seq,
-            'speedup_t1': s_t1,
-            'efficiency_t1': eff_t1
+            "time_s": time_s,
+            "speedup_seq": s_seq,
+            "speedup_t1": s_t1,
+            "efficiency_t1": eff_t1,
         }
 
     sys_info = ""
     sys_info_path = os.path.join(results_dir, "system_info.txt")
     if os.path.exists(sys_info_path):
-        with open(sys_info_path, 'r') as f:
+        with open(sys_info_path, "r") as f:
             sys_info = f.read()
 
     chart_payload = {}
@@ -595,43 +795,44 @@ def generate_html_report(summary_rows, raw_rows, results_dir, stab_rows=None):
         for label, w_dict in series_dict.items():
             sorted_w = sorted(w_dict.keys())
             chart_payload[phase][label] = {
-                'workers': sorted_w,
-                'times': [w_dict[w]['time_s'] for w in sorted_w],
-                'speedup_seq': [w_dict[w]['speedup_seq'] for w in sorted_w],
-                'speedup_t1': [w_dict[w]['speedup_t1'] for w in sorted_w],
-                'efficiency_t1': [w_dict[w]['efficiency_t1'] for w in sorted_w]
+                "workers": sorted_w,
+                "times": [w_dict[w]["time_s"] for w in sorted_w],
+                "speedup_seq": [w_dict[w]["speedup_seq"] for w in sorted_w],
+                "speedup_t1": [w_dict[w]["speedup_t1"] for w in sorted_w],
+                "efficiency_t1": [w_dict[w]["efficiency_t1"] for w in sorted_w],
             }
 
     stab_card_html = ""
     stab_link_html = ""
     if stab_rows:
-        stab_link_html = """
-            <a href="solution_stability.svg" target="_blank">🎯 solution_stability.svg</a>
+        stab_svg_file = config.file(config.stability_name, "svg")
+        stab_link_html = f"""
+            <a href="{stab_svg_file}" target="_blank">🎯 {stab_svg_file}</a>
             <a href="stability_summary.csv" download>📄 stability_summary.csv</a>
             <a href="stability_rmse.csv" download>📄 stability_rmse.csv</a>
         """
         rows_html = []
         for r in stab_rows:
-            st = r.get('status', '')
-            if 'DETERMINISTICO' in st:
+            st = r.get("status", "")
+            if "DETERMINISTICO" in st:
                 badge = f'<span class="badge" style="background: rgba(63, 185, 80, 0.2); color: #3fb950;">{st}</span>'
-            elif 'BASELINE' in st:
+            elif "BASELINE" in st:
                 badge = f'<span class="badge" style="background: rgba(88, 166, 255, 0.2); color: #58a6ff;">{st}</span>'
             else:
                 badge = f'<span class="badge" style="background: rgba(210, 153, 34, 0.2); color: #d29922;">{st}</span>'
 
             rows_html.append(f"""
                 <tr>
-                    <td><strong>{r.get('variant', '')}</strong></td>
-                    <td>{r.get('mode', '')}</td>
-                    <td>{r.get('workers', '1')}</td>
-                    <td>{r.get('repetitions', '1')}</td>
-                    <td><code>{r.get('avg_rmse_fitness', '-')}</code></td>
-                    <td><code>{r.get('avg_rmse_genes', '-')}</code></td>
-                    <td><code>{r.get('avg_rmse_ptv', '-')}</code></td>
-                    <td><code>{r.get('avg_rmse_rectum', '-')}</code></td>
-                    <td><code>{r.get('avg_rmse_bladder', '-')}</code></td>
-                    <td><code>{r.get('avg_spread', '-')}</code></td>
+                    <td><strong>{r.get("variant", "")}</strong></td>
+                    <td>{r.get("mode", "")}</td>
+                    <td>{r.get("workers", "1")}</td>
+                    <td>{r.get("repetitions", "1")}</td>
+                    <td><code>{r.get("avg_rmse_fitness", "-")}</code></td>
+                    <td><code>{r.get("avg_rmse_genes", "-")}</code></td>
+                    <td><code>{r.get("avg_rmse_ptv", "-")}</code></td>
+                    <td><code>{r.get("avg_rmse_rectum", "-")}</code></td>
+                    <td><code>{r.get("avg_rmse_bladder", "-")}</code></td>
+                    <td><code>{r.get("avg_spread", "-")}</code></td>
                     <td>{badge}</td>
                 </tr>
             """)
@@ -661,12 +862,18 @@ def generate_html_report(summary_rows, raw_rows, results_dir, stab_rows=None):
                         </tr>
                     </thead>
                     <tbody>
-                        {''.join(rows_html)}
+                        {"".join(rows_html)}
                     </tbody>
                 </table>
             </div>
         </div>
         """
+
+    speedup_svg = config.file(config.speedup_name, "svg")
+    speedup_lin_svg = config.file(f"{config.speedup_name}_linear", "svg")
+    eff_svg = config.file(config.efficiency_name, "svg")
+    time_svg = config.file(config.time_name, "svg")
+    time_log_svg = config.file(f"{config.time_name}_log", "svg")
 
     html_content = f"""<!DOCTYPE html>
 <html lang="it">
@@ -806,11 +1013,11 @@ def generate_html_report(summary_rows, raw_rows, results_dir, stab_rows=None):
 
         <div class="links-bar">
             <strong>Grafici Vettoriali e Dati:</strong>
-            <a href="speedup.svg" target="_blank">📈 speedup.svg (log)</a>
-            <a href="speedup_linear.svg" target="_blank">📈 speedup_linear.svg</a>
-            <a href="efficiency.svg" target="_blank">⚡ efficiency.svg</a>
-            <a href="execution_time.svg" target="_blank">⏱️ execution_time.svg</a>
-            <a href="execution_time_log.svg" target="_blank">⏱️ execution_time_log.svg</a>
+            <a href="{speedup_svg}" target="_blank">📈 {speedup_svg} (log)</a>
+            <a href="{speedup_lin_svg}" target="_blank">📈 {speedup_lin_svg}</a>
+            <a href="{eff_svg}" target="_blank">⚡ {eff_svg}</a>
+            <a href="{time_svg}" target="_blank">⏱️ {time_svg}</a>
+            <a href="{time_log_svg}" target="_blank">⏱️ {time_log_svg}</a>
             {stab_link_html}
             <a href="summary.csv" download>📄 summary.csv</a>
             <a href="timings_raw.csv" download>📄 timings_raw.csv</a>
@@ -833,7 +1040,7 @@ def generate_html_report(summary_rows, raw_rows, results_dir, stab_rows=None):
                 </div>
             </div>
             <div class="card">
-                <h2>⏱️ Tempo di Esecuzione vs Cores</h2>
+                <h2>⏱️ Completion time vs Cores</h2>
                 <div class="chart-container">
                     <canvas id="timeChart"></canvas>
                 </div>
@@ -908,7 +1115,7 @@ def generate_html_report(summary_rows, raw_rows, results_dir, stab_rows=None):
             }}
 
             speedupDatasets.push({{
-                label: 'Ideale (Lineare: S=p)',
+                label: 'Ideal (Lineare: S=p)',
                 data: sortedWorkers.map(w => ({{ x: w, y: w }})),
                 borderColor: '#8b949e',
                 borderDash: [5, 5],
@@ -931,7 +1138,7 @@ def generate_html_report(summary_rows, raw_rows, results_dir, stab_rows=None):
                 }});
             }}
             effDatasets.push({{
-                label: 'Ideale (100%)',
+                label: 'Ideal (100%)',
                 data: sortedWorkers.map(w => ({{ x: w, y: 100 }})),
                 borderColor: '#8b949e',
                 borderDash: [5, 5],
@@ -962,7 +1169,7 @@ def generate_html_report(summary_rows, raw_rows, results_dir, stab_rows=None):
                     responsive: true,
                     maintainAspectRatio: false,
                     scales: {{
-                        x: {{ type: 'linear', title: {{ display: true, text: 'Numero di Cores / Workers', color: '#8b949e' }}, grid: {{ color: '#30363d' }} }},
+                        x: {{ type: 'linear', title: {{ display: true, text: 'Cores / Workers', color: '#8b949e' }}, grid: {{ color: '#30363d' }} }},
                         y: {{ type: 'linear', title: {{ display: true, text: 'Speedup', color: '#8b949e' }}, grid: {{ color: '#30363d' }} }}
                     }},
                     plugins: {{ legend: {{ labels: {{ color: '#c9d1d9' }} }} }}
@@ -977,7 +1184,7 @@ def generate_html_report(summary_rows, raw_rows, results_dir, stab_rows=None):
                     responsive: true,
                     maintainAspectRatio: false,
                     scales: {{
-                        x: {{ type: 'linear', title: {{ display: true, text: 'Numero di Cores / Workers', color: '#8b949e' }}, grid: {{ color: '#30363d' }} }},
+                        x: {{ type: 'linear', title: {{ display: true, text: 'Cores / Workers', color: '#8b949e' }}, grid: {{ color: '#30363d' }} }},
                         y: {{ type: 'linear', min: 0, max: 110, title: {{ display: true, text: 'Efficienza (%)', color: '#8b949e' }}, grid: {{ color: '#30363d' }} }}
                     }},
                     plugins: {{ legend: {{ labels: {{ color: '#c9d1d9' }} }} }}
@@ -992,7 +1199,7 @@ def generate_html_report(summary_rows, raw_rows, results_dir, stab_rows=None):
                     responsive: true,
                     maintainAspectRatio: false,
                     scales: {{
-                        x: {{ type: 'linear', title: {{ display: true, text: 'Numero di Cores / Workers', color: '#8b949e' }}, grid: {{ color: '#30363d' }} }},
+                        x: {{ type: 'linear', title: {{ display: true, text: 'Cores / Workers', color: '#8b949e' }}, grid: {{ color: '#30363d' }} }},
                         y: {{ type: 'linear', title: {{ display: true, text: 'Secondi (s)', color: '#8b949e' }}, grid: {{ color: '#30363d' }} }}
                     }},
                     plugins: {{ legend: {{ labels: {{ color: '#c9d1d9' }} }} }}
@@ -1033,95 +1240,126 @@ def generate_html_report(summary_rows, raw_rows, results_dir, stab_rows=None):
 </body>
 </html>
 """
-    with open(html_path, 'w', encoding='utf-8') as f:
+    with open(html_path, "w", encoding="utf-8") as f:
         f.write(html_content)
 
     print(f"Report interattivo HTML salvato in: {html_path}")
 
 
-def generate_matplotlib_figures(summary_rows, results_dir):
+def generate_matplotlib_figures(summary_rows, results_dir, config=None):
     if not HAS_MATPLOTLIB:
-        print("Note: matplotlib non installato. Figure PNG saltate (usati i file vettoriali SVG e report.html).")
+        print(
+            "Note: matplotlib non installato. Figure PNG saltate (usati i file vettoriali SVG e report.html)."
+        )
         return
 
-    phases = sorted(list({r['phase'] for r in summary_rows}))
-    target_phase = 'nsga2_total' if 'nsga2_total' in phases else phases[0]
-    rows = [r for r in summary_rows if r['phase'] == target_phase]
+    if config is None:
+        config = PlotConfig(output_dir=results_dir)
+
+    target_dir = config.output_dir
+    os.makedirs(target_dir, exist_ok=True)
+
+    phases = sorted({r["phase"] for r in summary_rows})
+    target_phase = "nsga2_total" if "nsga2_total" in phases else phases[0]
+    rows = [r for r in summary_rows if r["phase"] == target_phase]
     if not rows:
         return
 
     series = defaultdict(list)
     for r in rows:
         key = f"{r['variant']} ({r['mode']})"
-        series[key].append({
-            'w': int(r['workers']),
-            'time_s': float(r['avg_mean_ms']) / 1000.0,
-            's_t1': float(r['speedup_t1']) if r.get('speedup_t1') else None,
-            'eff_t1': float(r['efficiency_t1']) * 100.0 if r.get('efficiency_t1') else None,
-        })
+        series[key].append(
+            {
+                "w": int(r["workers"]),
+                "time_s": float(r["avg_mean_ms"]) / 1000.0,
+                "s_t1": float(r["speedup_t1"]) if r.get("speedup_t1") else None,
+                "eff_t1": float(r["efficiency_t1"]) * 100.0
+                if r.get("efficiency_t1")
+                else None,
+            }
+        )
 
     for k in series:
-        series[k].sort(key=lambda x: x['w'])
+        series[k].sort(key=lambda x: x["w"])
 
-    all_workers = sorted(list({x['w'] for s in series.values() for x in s}))
+    all_workers = sorted({x["w"] for s in series.values() for x in s})
 
     # 1. Speedup PNG
     fig, ax = plt.subplots(figsize=(8, 6), dpi=300)
     for label, items in series.items():
-        ws = [x['w'] for x in items if x['s_t1'] is not None]
-        ss = [x['s_t1'] for x in items if x['s_t1'] is not None]
+        ws = [x["w"] for x in items if x["s_t1"] is not None]
+        ss = [x["s_t1"] for x in items if x["s_t1"] is not None]
         if ws:
-            ax.plot(ws, ss, marker='o', label=label, linewidth=2)
+            ax.plot(ws, ss, marker="o", label=label, linewidth=2)
 
     if all_workers:
-        ax.plot(all_workers, all_workers, '--', color='gray', label='Ideale (S = p)', linewidth=1.5)
+        ax.plot(
+            all_workers,
+            all_workers,
+            "--",
+            color="gray",
+            label="Ideal (S = p)",
+            linewidth=1.5,
+        )
 
-    ax.set_xlabel('Numero di Cores / Workers', fontsize=12)
-    ax.set_ylabel('Speedup (T1 / Tp)', fontsize=12)
-    ax.set_title(f'Speedup vs Cores ({target_phase})', fontsize=14, fontweight='bold')
-    ax.grid(True, linestyle='--', alpha=0.6)
+    ax.set_xlabel("Cores / Workers", fontsize=12)
+    ax.set_ylabel("Speedup (T1 / Tp)", fontsize=12)
+    speedup_title = config.get_title(
+        f"Speedup vs Cores ({target_phase})", config.speedup_title
+    )
+    ax.set_title(speedup_title, fontsize=14, fontweight="bold")
+    ax.grid(True, linestyle="--", alpha=0.6)
     ax.legend(fontsize=11)
     fig.tight_layout()
-    fig.savefig(os.path.join(results_dir, "speedup.png"))
+    fig.savefig(config.path(config.speedup_name, "png"))
     plt.close(fig)
 
     # 2. Efficienza PNG
     fig, ax = plt.subplots(figsize=(8, 6), dpi=300)
     for label, items in series.items():
-        ws = [x['w'] for x in items if x['eff_t1'] is not None]
-        es = [x['eff_t1'] for x in items if x['eff_t1'] is not None]
+        ws = [x["w"] for x in items if x["eff_t1"] is not None]
+        es = [x["eff_t1"] for x in items if x["eff_t1"] is not None]
         if ws:
-            ax.plot(ws, es, marker='s', label=label, linewidth=2)
+            ax.plot(ws, es, marker="s", label=label, linewidth=2)
 
     if all_workers:
-        ax.axhline(100.0, linestyle='--', color='gray', label='Ideale (100%)', linewidth=1.5)
+        ax.axhline(
+            100.0, linestyle="--", color="gray", label="Ideal (100%)", linewidth=1.5
+        )
 
-    ax.set_xlabel('Numero di Cores / Workers', fontsize=12)
-    ax.set_ylabel('Efficienza Parallela (%)', fontsize=12)
+    ax.set_xlabel("Cores / Workers", fontsize=12)
+    ax.set_ylabel("Efficienza Parallela (%)", fontsize=12)
     ax.set_ylim(0, 110)
-    ax.set_title(f'Efficienza Parallela vs Cores ({target_phase})', fontsize=14, fontweight='bold')
-    ax.grid(True, linestyle='--', alpha=0.6)
+    efficiency_title = config.get_title(
+        f"Efficienza Parallela vs Cores ({target_phase})",
+        config.efficiency_title,
+    )
+    ax.set_title(efficiency_title, fontsize=14, fontweight="bold")
+    ax.grid(True, linestyle="--", alpha=0.6)
     ax.legend(fontsize=11)
     fig.tight_layout()
-    fig.savefig(os.path.join(results_dir, "efficiency.png"))
+    fig.savefig(config.path(config.efficiency_name, "png"))
     plt.close(fig)
 
     # 3. Tempi PNG
     fig, ax = plt.subplots(figsize=(8, 6), dpi=300)
     for label, items in series.items():
-        ws = [x['w'] for x in items]
-        ts = [x['time_s'] for x in items]
-        ax.plot(ws, ts, marker='^', label=label, linewidth=2)
+        ws = [x["w"] for x in items]
+        ts = [x["time_s"] for x in items]
+        ax.plot(ws, ts, marker="^", label=label, linewidth=2)
 
-    ax.set_xlabel('Numero di Cores / Workers', fontsize=12)
-    ax.set_ylabel('Tempo di Esecuzione (secondi)', fontsize=12)
-    ax.set_title(f'Tempo di Esecuzione vs Cores ({target_phase})', fontsize=14, fontweight='bold')
-    ax.set_xscale('log', base=2)
-    ax.set_yscale('log')
+    ax.set_xlabel("Cores / Workers", fontsize=12)
+    ax.set_ylabel("Completion time (secondi)", fontsize=12)
+    time_title = config.get_title(
+        f"Completion time vs Cores ({target_phase})", config.time_title
+    )
+    ax.set_title(time_title, fontsize=14, fontweight="bold")
+    ax.set_xscale("log", base=2)
+    ax.set_yscale("log")
     ax.grid(True, which="both", ls="--", alpha=0.6)
     ax.legend(fontsize=11)
     fig.tight_layout()
-    fig.savefig(os.path.join(results_dir, "execution_time.png"))
+    fig.savefig(config.path(config.time_name, "png"))
     plt.close(fig)
 
 
@@ -1129,40 +1367,168 @@ def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     fmo_dir = os.path.abspath(os.path.join(script_dir, ".."))
 
-    target = None
-    theme = "light"
+    parser = argparse.ArgumentParser(
+        description="Analisi e visualizzazione delle prestazioni di FMO (NSGA-II)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Esempi di utilizzo:
+  # Esecuzione standard sulla cartella results/
+  python3 plot_benchmark.py results/
 
-    args = sys.argv[1:]
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg in ("--theme", "-t") and i + 1 < len(args):
-            theme = args[i + 1].lower()
-            i += 2
-        elif arg.startswith("--theme="):
-            theme = arg.split("=")[1].lower()
-            i += 1
-        elif not arg.startswith("-"):
-            target = arg
-            i += 1
-        else:
-            i += 1
+  # Aggiungi un prefisso a tutti i nomi dei file generati (es. exp1_speedup.svg)
+  python3 plot_benchmark.py results/ --prefix exp1_
 
+  # Aggiungi un suffisso ai file generati (es. speedup_prostate.svg)
+  python3 plot_benchmark.py results/ --suffix _prostate
+
+  # Personalizza prefisso file e titolo dei grafici
+  python3 plot_benchmark.py results/ --prefix run1_ --title-prefix "[Prostate N=256] "
+
+  # Personalizza singoli nomi di file
+  python3 plot_benchmark.py results/ --speedup-name speedup_cores --efficiency-name eff_cores
+
+  # Personalizza i titoli dei grafici
+  python3 plot_benchmark.py results/ --speedup-title "Speedup NSGA-II su Prostate"
+
+  # Salva i grafici con nome personalizzato in un'altra cartella
+  python3 plot_benchmark.py results/ -o ./my_plots/ --prefix fig_ --theme light
+""",
+    )
+    parser.add_argument(
+        "target",
+        nargs="?",
+        default=None,
+        help="Cartella dei risultati o file CSV (default: cartella più recente in results/)",
+    )
+    parser.add_argument(
+        "-o",
+        "--output-dir",
+        default=None,
+        help="Cartella dove salvare i grafici e i report (default: stessa cartella dei dati)",
+    )
+    parser.add_argument(
+        "-t",
+        "--theme",
+        choices=["light", "dark"],
+        default="light",
+        help="Tema grafico SVG: 'light' (default) o 'dark'",
+    )
+
+    # Naming group
+    naming = parser.add_argument_group("Personalizzazione Nomi File")
+    naming.add_argument(
+        "-p",
+        "--prefix",
+        default="",
+        help="Prefisso per tutti i file generati (es. 'run1_', 'prostate_')",
+    )
+    naming.add_argument(
+        "-s",
+        "--suffix",
+        default="",
+        help="Suffisso per tutti i file generati (es. '_pop256', '_v1')",
+    )
+    naming.add_argument(
+        "--speedup-name",
+        default="speedup",
+        help="Nome base file per speedup (default: 'speedup')",
+    )
+    naming.add_argument(
+        "--efficiency-name",
+        default="efficiency",
+        help="Nome base file per efficienza (default: 'efficiency')",
+    )
+    naming.add_argument(
+        "--time-name",
+        default="execution_time",
+        help="Nome base file per tempi di completamento (default: 'execution_time')",
+    )
+    naming.add_argument(
+        "--stability-name",
+        default="solution_stability",
+        help="Nome base file per stabilità/RMSE (default: 'solution_stability')",
+    )
+    naming.add_argument(
+        "--report-name",
+        default="report",
+        help="Nome base file per il report HTML (default: 'report')",
+    )
+
+    # Title group
+    titles = parser.add_argument_group("Personalizzazione Titoli Grafici")
+    titles.add_argument(
+        "--title-prefix",
+        default="",
+        help="Prefisso da anteporre ai titoli di tutti i grafici (es. '[Prostate 256] ')",
+    )
+    titles.add_argument(
+        "--title-suffix",
+        default="",
+        help="Suffisso da posporre ai titoli di tutti i grafici (es. ' - NSGA-II')",
+    )
+    titles.add_argument(
+        "--speedup-title",
+        default=None,
+        help="Titolo personalizzato per il grafico dello speedup",
+    )
+    titles.add_argument(
+        "--efficiency-title",
+        default=None,
+        help="Titolo personalizzato per il grafico dell'efficienza",
+    )
+    titles.add_argument(
+        "--time-title",
+        default=None,
+        help="Titolo personalizzato per il grafico del tempo di completamento",
+    )
+    titles.add_argument(
+        "--stability-title",
+        default=None,
+        help="Titolo personalizzato per il grafico di stabilità",
+    )
+
+    args = parser.parse_args()
+
+    target = args.target
     if not target:
         target = find_latest_results_dir(fmo_dir)
 
     if not target or not os.path.exists(target):
-        print("Uso: python3 plot_benchmark.py [PATH_CARTELLA_RISULTATI_O_CSV] [--theme light|dark]")
-        print("Nessuna directory dei risultati trovata.")
+        parser.print_help()
+        print("\nErrore: Nessuna directory dei risultati trovata.")
         sys.exit(1)
 
-    print(f"Caricamento dati da: {target} (Tema grafici SVG: {theme})")
     summary_rows, raw_rows, stab_rows, results_dir = load_data(target)
+    output_dir = args.output_dir if args.output_dir else results_dir
+
+    config = PlotConfig(
+        output_dir=output_dir,
+        prefix=args.prefix,
+        suffix=args.suffix,
+        speedup_name=args.speedup_name,
+        efficiency_name=args.efficiency_name,
+        time_name=args.time_name,
+        stability_name=args.stability_name,
+        report_name=args.report_name,
+        title_prefix=args.title_prefix,
+        title_suffix=args.title_suffix,
+        speedup_title=args.speedup_title,
+        efficiency_title=args.efficiency_title,
+        time_title=args.time_title,
+        stability_title=args.stability_title,
+        theme=args.theme,
+    )
+
+    print(f"Caricamento dati da: {target}")
+    print(f"Salvataggio grafici in: {config.output_dir} (Tema: {config.theme})")
+    if config.prefix or config.suffix:
+        print(f"Pattern nomi file: {config.prefix}<nome>{config.suffix}.svg")
 
     print_terminal_summary(summary_rows, stab_rows)
-    generate_all_svg_charts(summary_rows, results_dir, stab_rows, theme=theme)
-    generate_html_report(summary_rows, raw_rows, results_dir, stab_rows)
-    generate_matplotlib_figures(summary_rows, results_dir)
+    generate_all_svg_charts(
+        summary_rows, results_dir, stab_rows, theme=config.theme, config=config
+    )
+    generate_html_report(summary_rows, raw_rows, results_dir, stab_rows, config=config)
+    generate_matplotlib_figures(summary_rows, results_dir, config=config)
 
 
 if __name__ == "__main__":
