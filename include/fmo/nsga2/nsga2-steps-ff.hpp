@@ -8,6 +8,7 @@
 
 #include "fmo/core/population.hpp"
 #include "fmo/evaluation/evaluator.hpp"
+#include "ff/parallel_for.hpp"
 
 #include <random>
 #include <vector>
@@ -16,4 +17,4 @@ void evaluatePopulationFFFarm(Population &population, Evaluator &evaluator,
                               int nw);
 
 void evaluatePopulationFFParFor(Population &population, Evaluator &evaluator,
-                                int nw); 
+                                ff::ParallelFor &pf); 

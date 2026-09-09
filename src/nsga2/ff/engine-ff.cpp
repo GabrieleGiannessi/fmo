@@ -16,21 +16,13 @@ using namespace ff;
  * @param nw number of workers
  */
 void evaluatePopulationFFParFor(Population &population, Evaluator &evaluator,
-                                int nw) {
-  ParallelFor pf(nw); // map pattern per il calcolo delle fitness in parallelo
-                      // sugli individui
-
-  pf.parallel_for(0,                 // dove inizia l'iterazione
-                  population.size(), // dove finisce l'iterazione
-                  1,                 // stride di 1
-                  0, // politica di scheduling: 0 (partizionamento statico)
-                  [&population, &evaluator](const long i) {
-                    // Evaluator viene letto in const (nessuna race condition)
-                    // La scrittura avviene unicamente nella cella
-                    // dell'individuo i
-                    population.getIndividual(i).setFitness(
-                        evaluator.evaluate(population.getIndividual(i)));
-                  });
+                                ParallelFor &pf) {
+  // partizionamento statico di default
+  // l'intervallo [0, size) viene diviso in blocchi contigui equi tra i worker.
+  pf.parallel_for(0, population.size(), [&population, &evaluator](const size_t i) {
+    auto &ind = population.getIndividual(i);
+    ind.setFitness(evaluator.evaluate(ind));
+  });
 }
 
 struct EvalTask {

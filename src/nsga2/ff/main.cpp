@@ -15,16 +15,19 @@
 #include "fmo/preprocessing/manager.hpp"
 #include "fmo/utilities/hpc_helpers.hpp"
 #include "fmo/utilities/utimer.hpp"
+#include "fmo/metrics/metrics.hpp"
+#include "fmo/nsga2/nsga-utils.hpp"
 
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <map>
-#include "fmo/nsga2/nsga-utils.hpp"
-#include "fmo/metrics/metrics.hpp"
 #include <numeric>
 #include <string>
 #include <vector>
+#include <memory>
+
+#include <ff/parallel_for.hpp>
 
 #define GANTRIES                                                               \
   {0, 72, 144, 216, 288}                                                       \
@@ -71,9 +74,14 @@ void nsga2ff(Population &pop, int num_generations, int population_size,
     samples[phase].push_back(elapsed_ms);
   };
 
+  std::unique_ptr<ff::ParallelFor> pf;
+  if (mod == 0) {
+    pf = std::make_unique<ff::ParallelFor>(nw, true);
+  }
+
   if (mod == 0) {
     measure("initial_evaluation",
-            [&] { evaluatePopulationFFParFor(pop, evaluator, nw); });
+            [&] { evaluatePopulationFFParFor(pop, evaluator, *pf); });
   } else {
     measure("initial_evaluation",
             [&] { evaluatePopulationFFFarm(pop, evaluator, nw); });
@@ -102,7 +110,7 @@ void nsga2ff(Population &pop, int num_generations, int population_size,
       // B. Valutazione della discendenza Q_t (calcolo delle fitness)
       if (mod == 0) {
         measure("population_evaluation",
-                [&] { evaluatePopulationFFParFor(offspring, evaluator, nw); });
+                [&] { evaluatePopulationFFParFor(offspring, evaluator, *pf); });
       } else {
         measure("population_evaluation",
                 [&] { evaluatePopulationFFFarm(offspring, evaluator, nw); });
