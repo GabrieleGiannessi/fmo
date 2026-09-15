@@ -771,12 +771,12 @@ def generate_all_svg_charts(summary_rows, results_dir, stab_rows=None, theme="li
         else:
             amdahl_f = compute_amdahl_fraction(summary_rows, target_phase)
 
-    # 1. Speedup Assoluto (vs baseline sequenziale pura T_seq)
-    speedup_title = config.get_title(f"Speedup Assoluto vs Cores ({target_phase})", config.speedup_title)
+    # 1. Speedup (vs baseline sequenziale pura T_seq)
+    speedup_title = config.get_title(f"Speedup vs Cores ({target_phase})", config.speedup_title)
     generate_svg_chart(
         speedup_title,
         "Cores / Workers",
-        "Speedup Assoluto (Tseq / Tp)",
+        "Speedup (Tseq / Tp)",
         speedup_series,
         config.path(config.speedup_name, "svg"),
         is_speedup=True,
@@ -786,13 +786,13 @@ def generate_all_svg_charts(summary_rows, results_dir, stab_rows=None, theme="li
     )
 
     speedup_linear_title = config.get_title(
-        f"Speedup Assoluto vs Cores - Scala Lineare ({target_phase})",
+        f"Speedup vs Cores - Scala Lineare ({target_phase})",
         f"{config.speedup_title} (Scala Lineare)" if config.speedup_title else None,
     )
     generate_svg_chart(
         speedup_linear_title,
         "Cores / Workers",
-        "Speedup Assoluto (Tseq / Tp)",
+        "Speedup (Tseq / Tp)",
         speedup_series,
         config.path(f"{config.speedup_name}_linear", "svg"),
         is_speedup=True,
@@ -1187,7 +1187,7 @@ def generate_html_report(summary_rows, raw_rows, results_dir, stab_rows=None, co
                 </div>
             </div>
             <div class="card">
-                <h2>🚀 Speedup Assoluto vs Cores (S = Tseq / Tp)</h2>
+                <h2>🚀 Speedup vs Cores (S = Tseq / Tp)</h2>
                 <div class="chart-container">
                     <canvas id="speedupChart"></canvas>
                 </div>
@@ -1302,7 +1302,7 @@ def generate_html_report(summary_rows, raw_rows, results_dir, stab_rows=None, co
                 }});
             }}
 
-            // 2. Speedup Assoluto (Tseq / Tp)
+            // 2. Speedup (Tseq / Tp)
             const speedupDatasets = [];
             colorIdx = 0;
             for (const [label, data] of Object.entries(phaseObj)) {{
@@ -1407,7 +1407,7 @@ def generate_html_report(summary_rows, raw_rows, results_dir, stab_rows=None, co
                     maintainAspectRatio: false,
                     scales: {{
                         x: {{ type: 'linear', title: {{ display: true, text: 'Cores / Workers', color: '#8b949e' }}, grid: {{ color: '#30363d' }} }},
-                        y: {{ type: 'linear', title: {{ display: true, text: 'Speedup Assoluto (Tseq / Tp)', color: '#8b949e' }}, grid: {{ color: '#30363d' }} }}
+                        y: {{ type: 'linear', title: {{ display: true, text: 'Speedup (Tseq / Tp)', color: '#8b949e' }}, grid: {{ color: '#30363d' }} }}
                     }},
                     plugins: {{ legend: {{ labels: {{ color: '#c9d1d9' }} }} }}
                 }}
@@ -1531,7 +1531,7 @@ def generate_matplotlib_figures(summary_rows, results_dir, config=None):
         else:
             amdahl_f = compute_amdahl_fraction(summary_rows, target_phase)
 
-    # 1. Speedup Assoluto PNG (T_seq / T_p)
+    # 1. Speedup PNG (T_seq / T_p)
     fig, ax = plt.subplots(figsize=(8, 6), dpi=300)
     for label, items in series.items():
         ws = [x["w"] for x in items if x["s_seq"] is not None]
@@ -1563,9 +1563,9 @@ def generate_matplotlib_figures(summary_rows, results_dir, config=None):
             )
 
     ax.set_xlabel("Cores / Workers", fontsize=12)
-    ax.set_ylabel("Speedup Assoluto (Tseq / Tp)", fontsize=12)
+    ax.set_ylabel("Speedup (Tseq / Tp)", fontsize=12)
     speedup_title = config.get_title(
-        f"Speedup Assoluto vs Cores ({target_phase})", config.speedup_title
+        f"Speedup vs Cores ({target_phase})", config.speedup_title
     )
     ax.set_title(speedup_title, fontsize=14, fontweight="bold")
     ax.grid(True, linestyle="--", alpha=0.6)
