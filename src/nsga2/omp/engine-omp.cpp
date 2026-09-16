@@ -14,13 +14,11 @@
  */
 void evaluatePopulationOmp(Population &population, Evaluator &evaluator,
                            int nw) {
-  // TIMERSTART(population_evaluation);
 #pragma omp parallel for num_threads(nw)
   for (int i = 0; i < static_cast<int>(population.size()); ++i) {
     auto &individual = population.getIndividual(i);
     individual.setFitness(evaluator.evaluate(individual));
   }
-  // TIMERSTOP(population_evaluation);
 }
 /**
  * @brief versione sequenziale della generazione della progenie
