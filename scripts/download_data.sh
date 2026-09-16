@@ -36,7 +36,7 @@ download_and_extract() {
     local folder_name
     folder_name="$(basename "$target_dir")"
     
-    echo -e "${YELLOW}Scaricamento: $filename in $folder_name/${NC}"
+    echo -e "${YELLOW}Download: $filename in $folder_name/${NC}"
     
     # Scarica il file
     if curl -L -o "$filepath" "$url"; then
