@@ -6,6 +6,7 @@
 #include "fmo/nsga2/nsga-utils.hpp"
 #include "fmo/nsga2/offspring.hpp"
 #include "fmo/utilities/hpc_helpers.hpp"
+#include <utimer.hpp>
 
 using namespace ff;
 
@@ -54,11 +55,15 @@ public:
   EvalWorker(Evaluator &e) : evaluator(e) {}
 
   EvalTask *svc(EvalTask *ind) {
-    if (ind == nullptr) {
+    {
+      utimer u ("= "); 
+      if (ind == nullptr) {
       return EOS;
     }
     ind->ptr_i->setFitness(evaluator.evaluate(*(ind->ptr_i)));
     return ind;
+    }
+    
   }
 };
 
